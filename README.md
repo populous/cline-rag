@@ -87,6 +87,7 @@ cmake --build build --config Debug --target test-pack
 | 테스트 | 실행 내용 | 라벨 |
 |---|---|---|
 | `rag.unit` | `pytest tests/test_rag_core.py -v` | `rag;unit` |
+| `rag.hybrid` | `pytest tests/test_hybrid_search.py -v` | `rag;unit;hybrid` |
 | `rag.mcp` | `pytest tests/test_mcp_server.py -v` | `rag;mcp;protocol` |
 | `rag.smoke` | `smoke_mcp.py` (자식 프로세스 핸드셰이크) | `rag;smoke` |
 
@@ -122,7 +123,10 @@ subprocess, sys, traceback, typing, urllib
 ```
 
 이유는 Python 3.14 환경에서 `pip install` 없이도 동작하도록 만들었기 때문입니다.
-MCP 서버(stdio JSON-RPC), 벡터 저장소(sqlite3), 유사도 계산(순수 파이썬)을
+이유는 Python 3.14 환경에서 `pip install` 없이도 동작하도록 만들었기 때문입니다.
+MCP 서버(stdio JSON-RPC), 벡터 저장소(sqlite3), 유사도 계산(순수 파이썬),
+키워드 검색(BM25), 순위 융합(RRF)을 모두 직접 구현했습니다.
+`requirements.txt` 가 비어 있는 것은 누락이 아니라 설계입니다.
 모두 직접 구현했습니다. `requirements.txt` 가 비어 있는 것은 누락이 아니라 설계입니다.
 
 선택 확장이 필요할 때만:
@@ -135,9 +139,25 @@ python -m pip install -r requirements-optional.txt   # numpy, pypdf
 
 | 도구 | 설명 |
 |---|---|
-| `search_docs(query, top_k, min_score)` | 의미 기반 문서 검색 |
+| `search_docs(query, top_k, min_score, sources, mode)` | 문서 검색. `mode`=hybrid(기본)/vector/keyword, `sources` 로 파일 제한 |
 | `list_indexed_sources()` | 색인된 파일 목록 |
 | `index_status()` | 색인 현황(청크/파일/차원) |
+| `reindex(paths, reset)` | 문서 재색인 (쓰기 도구, `autoApprove` 제외) |
+
+## 검색 모드
+
+`search_docs` 는 `mode` 로 검색 방식을 고릅니다.
+
+| mode | 방식 | 사용 시점 |
+|---|---|---|
+| `hybrid` (기본) | 벡터 + BM25 를 RRF 로 합치 | 대부분의 질문 |
+| `vector` | 코사인 유사도(의미) | 표현이 달라도 의미로 찾을 때 |
+| `keyword` | BM25(정확한 용어) | 함수명·에러코드 등, 임베딩 호출 없이 빠름 |
+
+- `sources` 로 색인된 파일 일부만 좁힙니다.
+- 주의: `hybrid`/`keyword` 의 점수는 RRF 순위 점수라
+  `min_score`(코사인 하한)가 적용되지 않습니다.
+  임계값이 필요하면 `mode="vector"` 를 쓰세요.
 
 ## Cline 등록
 

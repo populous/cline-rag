@@ -123,10 +123,15 @@ def test_handle_request_notification_returns_none():
 # 도구 목록
 # ---------------------------------------------------------------------------
 
-def test_tools_list_exposes_three_tools(mcp_stdin):
+def test_tools_list_exposes_every_tool(mcp_stdin):
     responses = run_server(mcp_stdin, request("tools/list"))
     tools = {tool["name"]: tool for tool in responses[0]["result"]["tools"]}
-    assert set(tools) == {"search_docs", "list_indexed_sources", "index_status"}
+    assert set(tools) == {
+        "search_docs",
+        "list_indexed_sources",
+        "index_status",
+        "reindex",
+    }
 
 
 def test_every_tool_has_description_and_schema(mcp_stdin):
@@ -230,3 +235,167 @@ def test_multiple_requests_processed_in_order(mcp_stdin):
         request("tools/list", request_id=2),
     )
     assert [response["id"] for response in responses] == [1, 2]
+
+
+# ---------------------------------------------------------------------------
+# search_docs: mode and sources
+# ---------------------------------------------------------------------------
+
+def test_search_docs_schema_advertises_mode_and_sources(mcp_stdin):
+    responses = run_server(mcp_stdin, request("tools/list"))
+    schema = next(t for t in responses[0]["result"]["tools"]
+                  if t["name"] == "search_docs")["inputSchema"]
+    assert schema["properties"]["mode"]["enum"] == ["hybrid", "vector", "keyword"]
+    assert schema["properties"]["sources"]["type"] == "array"
+    assert schema["properties"]["sources"]["items"]["type"] == "string"
+
+
+def test_search_docs_reports_the_used_mode(mcp_stdin, tmp_store):
+    responses = run_server(
+        mcp_stdin,
+        call_tool("search_docs", {"query": "크기", "mode": "keyword"}),
+    )
+    assert "[keyword]" in extract_text(responses[0])
+
+
+def test_search_docs_defaults_to_hybrid(mcp_stdin, tmp_store):
+    responses = run_server(mcp_stdin, call_tool("search_docs", {"query": "chunk"}))
+    assert "[hybrid]" in extract_text(responses[0])
+
+
+def test_search_docs_rejects_unknown_mode(mcp_stdin, tmp_store):
+    responses = run_server(
+        mcp_stdin,
+        call_tool("search_docs", {"query": "chunk", "mode": "banana"}),
+    )
+    assert "banana" in extract_text(responses[0])
+
+
+def test_search_docs_accepts_a_single_source_string(mcp_stdin, tmp_store):
+    responses = run_server(
+        mcp_stdin,
+        call_tool("search_docs", {"query": "chunk", "sources": "guide.md"}),
+    )
+    text = extract_text(responses[0])
+    assert "guide.md" in text
+    assert "ops.md" not in text
+
+
+def test_search_docs_source_filter_excludes_other_files(mcp_stdin, tmp_store):
+    responses = run_server(
+        mcp_stdin,
+        call_tool("search_docs", {"query": "chunk", "sources": []}),
+    )
+    assert "error" not in responses[0]
+
+
+# ---------------------------------------------------------------------------
+# reindex
+# ---------------------------------------------------------------------------
+
+class _Completed:
+    """Stand-in for subprocess.CompletedProcess."""
+
+    def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = ""):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def test_reindex_schema_is_empty_by_default(mcp_stdin):
+    responses = run_server(mcp_stdin, request("tools/list"))
+    schema = next(t for t in responses[0]["result"]["tools"]
+                  if t["name"] == "reindex")["inputSchema"]
+    assert schema["type"] == "object"
+    assert set(schema["properties"]) == {"paths", "reset"}
+    assert "required" not in schema
+
+
+def test_reindex_runs_ingest_with_paths_and_reset(mcp_stdin, tmp_store, monkeypatch):
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["kwargs"] = kwargs
+        return _Completed(stdout="indexed 2 chunks")
+
+    monkeypatch.setattr(rag_server.subprocess, "run", fake_run)
+
+    responses = run_server(
+        mcp_stdin, call_tool("reindex", {"paths": ["docs"], "reset": True})
+    )
+
+    assert captured["command"][1].endswith("ingest.py")
+    assert captured["command"][-2:] == ["--reset", "docs"]
+    assert captured["kwargs"]["env"]["PYTHONPATH"]
+    assert captured["kwargs"]["capture_output"] is True
+    assert captured["kwargs"]["timeout"] == rag_server.REINDEX_TIMEOUT
+    assert "indexed 2 chunks" in extract_text(responses[0])
+
+
+def test_reindex_incremental_omits_the_reset_flag(mcp_stdin, tmp_store, monkeypatch):
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        return _Completed(stdout="ok")
+
+    monkeypatch.setattr(rag_server.subprocess, "run", fake_run)
+    run_server(mcp_stdin, call_tool("reindex", {}))
+
+    assert "--reset" not in captured["command"]
+
+
+def test_reindex_never_leaks_child_stdout_into_the_mcp_stream(
+    mcp_stdin, tmp_store, monkeypatch
+):
+    monkeypatch.setattr(
+        rag_server.subprocess, "run",
+        lambda command, **kwargs: _Completed(stdout="PROGRESS 50%\nPROGRESS 100%"),
+    )
+    responses = run_server(mcp_stdin, call_tool("reindex", {}))
+
+    # exactly one response message: no raw child output on the MCP channel
+    assert len(responses) == 1
+    assert responses[0]["jsonrpc"] == "2.0"
+    assert "PROGRESS" not in responses[0]
+
+
+def test_reindex_failure_reports_the_exit_code(mcp_stdin, tmp_store, monkeypatch):
+    monkeypatch.setattr(
+        rag_server.subprocess, "run",
+        lambda command, **kwargs: _Completed(returncode=3, stderr="embedding failed"),
+    )
+    responses = run_server(mcp_stdin, call_tool("reindex", {}))
+
+    text = extract_text(responses[0])
+    assert "3" in text
+    assert "embedding failed" in text
+
+
+def test_reindex_timeout_is_reported(mcp_stdin, tmp_store, monkeypatch):
+    def raise_timeout(command, **kwargs):
+        raise rag_server.subprocess.TimeoutExpired(cmd="ingest", timeout=1)
+
+    monkeypatch.setattr(rag_server.subprocess, "run", raise_timeout)
+    responses = run_server(mcp_stdin, call_tool("reindex", {}))
+
+    assert str(rag_server.REINDEX_TIMEOUT) in extract_text(responses[0])
+
+
+def test_reindex_oserror_is_reported(mcp_stdin, tmp_store, monkeypatch):
+    def raise_oserror(command, **kwargs):
+        raise OSError("python not found")
+
+    monkeypatch.setattr(rag_server.subprocess, "run", raise_oserror)
+    responses = run_server(mcp_stdin, call_tool("reindex", {}))
+
+    assert "python not found" in extract_text(responses[0])
+
+
+def test_reindex_is_not_auto_approvable_by_convention(mcp_stdin):
+    """The tool description must warn that it is a write tool."""
+    responses = run_server(mcp_stdin, request("tools/list"))
+    tool = next(t for t in responses[0]["result"]["tools"]
+                if t["name"] == "reindex")
+    assert "autoApprove" in tool["description"]
