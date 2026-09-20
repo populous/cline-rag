@@ -22,6 +22,21 @@ import rag_core as core
 PROJECT_DIR = core.PROJECT_DIR
 
 
+def force_utf8_output() -> None:
+    """Pin stdout/stderr to UTF-8 before printing Korean status lines.
+
+    Windows consoles may default to cp1252 or cp949, which cannot encode
+    Korean and would raise UnicodeEncodeError (seen on GitHub's runner).
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (ValueError, OSError):
+                pass
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="문서를 임베딩해 SQLite RAG 저장소에 색인합니다."
@@ -47,6 +62,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    force_utf8_output()
     args = parse_args(argv)
     cfg = core.load_config(args.config)
     if args.provider:

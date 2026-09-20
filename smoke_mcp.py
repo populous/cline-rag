@@ -18,6 +18,22 @@ PROJECT_DIR = Path(__file__).resolve().parent
 SERVER = PROJECT_DIR / "src" / "rag_server.py"
 
 
+def force_utf8_output() -> None:
+    """Pin stdout/stderr to UTF-8 before printing diagnostics.
+
+    Windows consoles may default to cp1252 (the GitHub windows-latest runner)
+    or cp949, which cannot encode Korean and would raise UnicodeEncodeError.
+    errors="replace" keeps the run going even on an exotic code page.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (ValueError, OSError):
+                pass
+
+
 def send(proc: subprocess.Popen, payload: dict) -> dict | None:
     """요청을 한 줄로 보내고 응답 한 줄을 읽는다(알림이면 None)."""
     proc.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
@@ -39,6 +55,7 @@ def text_of(response: dict) -> str:
 
 
 def main() -> int:
+    force_utf8_output()
     proc = subprocess.Popen(
         [sys.executable, str(SERVER)],
         stdin=subprocess.PIPE,
