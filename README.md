@@ -1,0 +1,183 @@
+# cline_rag
+
+Cline 에 붙이는 **로컬 RAG 검색 MCP 서버**. 외부 패키지 없이 표준 라이브러리만 씁니다.
+
+전체 구축 과정은 **[RAG_STEP_BY_STEP.md](RAG_STEP_BY_STEP.md)**  보세요.
+
+## 구성
+
+```
+cline_rag/
+├── src/                       # 소스
+│   ├── rag_core.py            # 임베딩(Ollama/OpenAI) + SQLite 벡터 저장소 + 코사인 검색
+│   ├── ingest.py              # 문서 -> 청크 -> 임베딩 -> 색인 CLI
+│   └── rag_server.py          # MCP stdio 서버 (도구 3개)
+├── tests/                     # pytest 테스트
+│   ├── conftest.py            # 공용 픽스처 (외부 서비스 불필요)
+│   ├── test_rag_core.py       # 코어 단위 테스트
+│   └── test_mcp_server.py     # MCP 프로토콜/도구 테스트
+├── docs/                      # 색인할 문서
+├── CMakeLists.txt             # 테스트 패킹 유틸 (pytest -> CTest 래핑)
+├── CMakePresets.json          # default / ninja / ci 프리셋
+├── pytest.ini                 # pytest 설정
+├── config.json                # 임베딩 제공자 / 저장소 / 청킹 설정
+├── smoke_mcp.py               # 서버를 자식 프로세스로 띄우는 스모크 검사
+├── setup.ps1                  # venv + 의존성 + 색인 + 테스트 (원클릭)
+├── requirements.txt           # 런런타임 의존성 (필수 서드파티 없음)
+├── requirements-dev.txt       # 테스트 의존성 (pytest)
+├── requirements-optional.txt  # 선택 확장 (numpy, pypdf)
+└── requirements.lock.txt      # pip freeze 기록
+```
+
+## 빠른 시작
+
+한 번에 설정 + 검증:
+
+```powershell
+cd C:\path\to\cline_rag
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
+```
+
+수동으로 하려면:
+
+```powershell
+cd C:\path\to\cline_rag
+
+python -m venv .venv                              # 1) 가상환경
+.\.venv\Scripts\Activate.ps1                       # 2) 활성화
+python -m pip install --upgrade pip                # 3) pip 최신화
+python -m pip install -r requirements.txt          # 4) 런타임 의존성 (없음)
+python -m pip install -r requirements-dev.txt      # 5) pytest
+
+ollama pull nomic-embed-text                       # 6) 임베딩 모델 (최초 1회)
+python src\ingest.py --reset                       # 7) 인
+python smoke_mcp.py                                # 8) MCP 스모크 검사
+python -m pytest tests -q                          # 9) 테스트
+```
+
+## CMake 테스트 팩 (pytest -> CTest 래핑)
+
+CMake 를 **컴파일이 아니라 테스트 패킹 유틸** 로만 씁니다(`LANGUAGES NONE`).
+
+```powershell
+# 프리셋으로
+cmake --preset default        # 격리된 build/test-venv 생성 + pytest 설치
+ctest --preset default        # 전체 테스트 팩
+ctest --preset unit           # 단위 테스트만
+ctest --preset mcp            # MCP 테스트만
+
+# 프리셋 없이
+cmake -S . -B build
+ctest --test-dir build -C Debug --output-on-failure
+ctest --test-dir build -C Debug -L mcp        # 라벨 필터
+ctest --test-dir build -C Debug --show-only   # 등록된 테스트 목록
+
+# 한 번에 (빌드 타깃)
+cmake --build build --config Debug --target test-pack
+```
+
+등록되는 CTest 테스트:
+
+| 테스트 | 실행 내용 | 라벨 |
+|---|---|---|
+| `rag.unit` | `pytest tests/test_rag_core.py -v` | `rag;unit` |
+| `rag.mcp` | `pytest tests/test_mcp_server.py -v` | `rag;mcp;protocol` |
+| `rag.smoke` | `smoke_mcp.py` (자식 프로세스 핸드셰이크) | `rag;smoke` |
+
+CMake 옵션:
+
+| 옵션 | 기본값 | 설명 |
+|---|---|---|
+| `CLINE_RAG_SETUP_TEST_ENV` | `ON` | 격리된 `build/test-venv` 생성 + 테스트 의존성 설치 |
+| `BUILD_TESTING` | `ON` | `include(CTest)` 가 정의 |
+
+이미 설치된 venv 를 재사용하려면:
+
+```powershell
+cmake -S . -B build-ninja -G Ninja -DCMAKE_BUILD_TYPE=Debug `
+  -DCLINE_RAG_SETUP_TEST_ENV=OFF `
+  -DPython3_EXECUTABLE="$PWD\.venv\Scripts\python.exe"
+ctest --test-dir build-ninja --output-on-failure
+```
+
+## 의존성
+
+| 파일 | 내용 | 설치 시점 |
+|---|---|---|
+| `requirements.txt` | 런타임 — **서드파티 없음** (표준 라이브러리만) | 항상 |
+| `requirements-dev.txt` | `pytest>=8.0` | 테스트/CMake |
+| `requirements-optional.txt` | `numpy`, `pypdf` | 필요할 때만 |
+
+**필수 서드파티 패키지가 없습니다.** 사용 중인 표준 라이브러리:
+
+```
+argparse, json, math, os, pathlib, sqlite3,
+subprocess, sys, traceback, typing, urllib
+```
+
+이유는 Python 3.14 환경에서 `pip install` 없이도 동작하도록 만들었기 때문입니다.
+MCP 서버(stdio JSON-RPC), 벡터 저장소(sqlite3), 유사도 계산(순수 파이썬)을
+모두 직접 구현했습니다. `requirements.txt` 가 비어 있는 것은 누락이 아니라 설계입니다.
+
+선택 확장이 필요할 때만:
+
+```powershell
+python -m pip install -r requirements-optional.txt   # numpy, pypdf
+```
+
+## 제공 도구
+
+| 도구 | 설명 |
+|---|---|
+| `search_docs(query, top_k, min_score)` | 의미 기반 문서 검색 |
+| `list_indexed_sources()` | 색인된 파일 목록 |
+| `index_status()` | 색인 현황(청크/파일/차원) |
+
+## Cline 등록
+
+`C:\Users\<you>\.cline\data\settings\cline_mcp_settings.json`
+
+```json
+{
+  "mcpServers": {
+    "cline-rag": {
+      "command": "C:\\path\\to\\cline_rag\\.venv\\Scripts\\python.exe",
+      "args": ["C:\\path\\to\\cline_rag\\src\\rag_server.py"],
+      "env": {},
+      "disabled": false,
+      "autoApprove": ["search_docs", "list_indexed_sources", "index_status"]
+    }
+  }
+}
+```
+
+> 시스템 `python` 대신 **`.venv\Scripts\python.exe`** 를 쓰는 이유:
+> 환경이 격리되고 경로가 고정됩니다. 특히 이 PC 는 `python` 이
+> Windows Store 셰임(`WindowsApps\python.exe`)을 가리켜서 그대로 쓰면
+> MCP 기동에 실패할 수 있습니다.
+
+## 명령 요약
+
+```powershell
+# 색인
+python src\ingest.py                 # 증분 색인
+python src\ingest.py --reset         # 전체 재색인
+python src\ingest.py --prune         # 삭삭제된 파일 청크 제거
+python src\ingest.py --stats         # 현황
+python src\ingest.py --list          # 색색인된 파일 목록
+
+# 테스트
+python smoke_mcp.py                  # MCP 스모크 (자식 프로세스)
+python -m pytest tests -q            # pytest 전체
+cmake --preset default ; ctest --preset default   # CMake/CTest 테스트 팩
+```
+
+## 설계 메모
+
+- **의존성 0**: Python 3.14 에서 `pip install` 없이 동작하도록 `sqlite3`/`urllib`/`math`/`json` 만 사용합니다.
+- **src 레이아웃**: 소스는 `src/`, 데이터(`config.json`, `rag_store.sqlite3`)는 프로젝트 루트에 둡니다. `rag_core.PROJECT_DIR` 이 기준을 결정합니다.
+- **MCP 직접 구현**: `initialize`, `ping`, `tools/list`, `tools/call` 만 구현한 최소 stdio JSON-RPC 서버입니다.
+- **stdout 은 프로토콜 전용**: 로그는 전부 stderr(UTF-8 고정)로 나갑니다.
+- **경로 해석 단일화**: 세 도구가 `load_config_and_store()` 하나만 써서 경로 기준이 어긋날 수 없습니다.
+- **임베딩 모델 고정**: 색인 후 모델을 바꾸면 벡터 공간이 달라지므로 `--reset` 이 필요합니다.
+- **테스트는 외부 서비스 불필요**: `conftest.py` 가 임베딩을 결정적 가짜 함수로 바꿔 Ollama/OpenAI 없이 돕니다.

@@ -1,0 +1,14 @@
+# Normalize line endings so the repo is consistent across platforms.
+# Set before the first commit to avoid CRLF/LF churn later.
+* text=auto eol=lf
+
+# Windows scripts must keep CRLF so PowerShell 5.1 parses them safely.
+*.ps1  text eol=crlf
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# Binary assets must never be converted.
+*.sqlite3 binary
+*.png     binary
+*.jpg     binary
+*.ico     binary

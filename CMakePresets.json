@@ -1,0 +1,105 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Default (Visual Studio 18 2026, x64)",
+      "description": "Isolated test-venv + multi-config generator + ctest presets",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "BUILD_TESTING": "ON",
+        "CLINE_RAG_SETUP_TEST_ENV": "ON"
+      }
+    },
+    {
+      "name": "ninja",
+      "displayName": "Ninja (Debug, single-config)",
+      "description": "Faster configure/build loop; reuses the project .venv",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "BUILD_TESTING": "ON",
+        "CLINE_RAG_SETUP_TEST_ENV": "OFF",
+        "Python3_EXECUTABLE": "${sourceDir}/.venv/Scripts/python.exe"
+      }
+    },
+    {
+      "name": "ci",
+      "inherits": "default",
+      "displayName": "CI (fresh isolated test env)",
+      "binaryDir": "${sourceDir}/build-ci",
+      "cacheVariables": {
+        "CLINE_RAG_SETUP_TEST_ENV": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "configuration": "Debug"
+    },
+    {
+      "name": "test-pack",
+      "configurePreset": "default",
+      "configuration": "Debug",
+      "targets": ["test-pack"]
+    },
+    {
+      "name": "ninja",
+      "configurePreset": "ninja"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": false
+      }
+    },
+    {
+      "name": "unit",
+      "inherits": "default",
+      "displayName": "Unit tests only",
+      "filter": {
+        "include": {
+          "label": "unit"
+        }
+      }
+    },
+    {
+      "name": "mcp",
+      "inherits": "default",
+      "displayName": "MCP protocol tests only",
+      "filter": {
+        "include": {
+          "label": "mcp"
+        }
+      }
+    },
+    {
+      "name": "ci",
+      "inherits": "default",
+      "displayName": "CI (fail fast, no cache reuse)",
+      "configurePreset": "ci",
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": true
+      }
+    }
+  ]
+}

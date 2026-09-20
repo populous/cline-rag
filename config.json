@@ -1,0 +1,22 @@
+{
+  "embedding": {
+    "provider": "ollama",
+    "ollama": {
+      "apiBase": "http://127.0.0.1:11434",
+      "model": "nomic-embed-text"
+    },
+    "openai": {
+      "model": "text-embedding-3-small",
+      "apiKeyEnv": "OPENAI_API_KEY",
+      "apiBase": "https://api.openai.com/v1"
+    }
+  },
+  "store": {
+    "path": "rag_store.sqlite3",
+    "dim": 768
+  },
+  "chunking": {
+    "size": 800,
+    "overlap": 120
+  }
+}

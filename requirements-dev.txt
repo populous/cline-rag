@@ -1,0 +1,13 @@
+# cline_rag -- 개발/테스트 의존성
+#
+# 런타임에는 필요 없습니다. 테스트를 돌릴 때만 설치하세요.
+#
+#   python -m pip install -r requirements-dev.txt
+#   python -m pytest tests -v
+#
+# 또는 CMake 로 (격리된 test-venv 자동 생성):
+#   cmake -S . -B build
+#   ctest --test-dir build -C Debug --output-on-failure
+
+# 테스트 러너. CMake 가 이 러너를 CTest 테스트로 감싼다.
+pytest>=8.0

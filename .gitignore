@@ -1,0 +1,18 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+rag_store.sqlite3
+_*.txt
+_*.py
+
+# CMake 빌드 산출물 (테스트 팩)
+build/
+build-*/
+CMakeUserPresets.json
+
+# 테스트/툴 캐시
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
