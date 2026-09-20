@@ -188,6 +188,7 @@ python src\ingest.py --prune         # 삭제된 파일의 청크 제거
 python src\ingest.py --stats         # 현황만 보기
 python src\ingest.py --list          # 색인된 파일 목록
 ```
+- MCP 도구 `reindex` 로 Cline 안에서 바로 재색인할 수 있다.
 
 정상 출력 예시:
 
@@ -474,10 +475,10 @@ __pycache__/
 |---|---|
 | PDF/Word 색인 | `pypdf` / `python-docx` 로 텍스트 추출 후 `build_chunk_rows` 에 넘김 |
 | 검색 속도 | `numpy` 로 벡터 행렬화, 또는 `sqlite-vec` / `chromadb` / `faiss` 도입 |
-| 정확도 향상 | BM25(키워드) + 벡터(의미) **하이브리드 검색** 후 RRF 로 병합 |
+| 정확도 향상 | BM25(키워드) + 벡터(의미) **하이브리드 검색** 후 RRF 로 병합 | — **v1.1.0 구현**
 | 순위 개선 | 상위 20건 검색 후 LLM 으로 재정렬(rerank) |
-| 파일 필터 | `search_docs` 에 `sources` 인자 추가 (코어의 `search()` 는 이미 지원) |
-| 자동 재색인 | MCP 도구에 `reindex` 추가 (쓰기 도구이므로 `autoApprove` 에는 넣지 말 것) |
+| 파일 필터 | `search_docs` 에 `sources` 인자 추가 (코어의 `search()` 는 이미 지원) | — **v1.1.0 구현**
+| 자동 재색인 | MCP 도구에 `reindex` 추가 (쓰기 도구이므로 `autoApprove` 에는 넣지 말 것) | — **v1.1.0 구현**
 | 다중 프로젝트 | `config.json` 을 프로젝트별로 두고 서버를 여러 개 등록 |
 
 > 확장 시 주의: `autoApprove` 에는 **읽기 전용 도구만** 넣으세요.
@@ -670,6 +671,7 @@ gh api -X PUT repos/populous/cline-rag/branches/main/protection `
 | 첫 PR | #1 fix: force UTF-8 stdout (squash merge → `7949010`), CI 33s **pass** |
 | 릴리스 | `v1.0.0` (태그 + GitHub Release) |
 | CI | GitHub Actions `CI` / windows-latest / Python 3.12 / pytest 49 + smoke + CTest 3 |
+| Release 1.1.0 | hybrid/keyword/sources + reindex MCP tool |
 
 ## 부록 B. 한눈에 보는 명령 요약
 

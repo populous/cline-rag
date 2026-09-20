@@ -98,6 +98,24 @@ if(BUILD_TESTING)
             TIMEOUT 600
     )
 
+    # 1b) hybrid retrieval: tokenisation, BM25, RRF, modes
+    add_test(
+        NAME rag.hybrid
+        COMMAND
+            "${CLINE_RAG_TEST_PYTHON}" -m pytest
+            "${CMAKE_SOURCE_DIR}/tests/test_hybrid_search.py"
+            -v -p no:cacheprovider
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    )
+
+    set_tests_properties(
+        rag.hybrid
+        PROPERTIES
+            LABELS "rag;unit;hybrid"
+            ENVIRONMENT "${CLINE_RAG_TEST_ENV}"
+            TIMEOUT 600
+    )
+
     # 2) MCP protocol/tool tests
     add_test(
         NAME rag.mcp
@@ -131,7 +149,7 @@ if(BUILD_TESTING)
             TIMEOUT 300
     )
 
-    message(STATUS "Registered CTest tests: rag.unit, rag.mcp, rag.smoke")
+    message(STATUS "Registered CTest tests: rag.unit, rag.hybrid, rag.mcp, rag.smoke")
 
     # ------------------------------------------------------------------
     # Convenience target that runs the whole pack

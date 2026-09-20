@@ -389,19 +389,160 @@ def cosine(a: list[float], b: list[float]) -> float:
     return dot / (math.sqrt(norm_a) * math.sqrt(norm_b))
 
 
-def search(conn: sqlite3.Connection, query_vector: list[float],
-           top_k: int = 5, min_score: float = 0.0,
-           sources: list[str] | None = None) -> list[dict]:
-    """질의 벡터와 가장 유사한 청크 top_k 를 돌려준다."""
+def fetch_chunks(conn: sqlite3.Connection,
+                 sources: list[str] | None = None) -> list[sqlite3.Row]:
+    """Load stored chunks, optionally restricted to specific sources."""
     sql = "SELECT source, chunk_index, text, embedding FROM chunks"
     params: list = []
     if sources:
         placeholders = ",".join("?" for _ in sources)
         sql += f" WHERE source IN ({placeholders})"
         params.extend(sources)
+    return conn.execute(sql, params).fetchall()
 
+
+# --------------------------------------------------------------------------
+# Tokenisation and BM25 keyword search
+# --------------------------------------------------------------------------
+
+#: Codepoints at or above this value are treated as CJK (Korean, Chinese,
+#: Japanese) and indexed as overlapping character bigrams. Bigrams keep Korean
+#: searchable without a morphological analyser or any third-party dependency.
+CJK_START = 0x2E80
+
+BM25_K1 = 1.5
+BM25_B = 0.75
+RRF_K = 60
+
+
+def tokenize(text: str) -> list[str]:
+    """Split text into lowercased Latin/digit words plus CJK bigrams."""
+    tokens: list[str] = []
+    latin: list[str] = []
+    cjk: list[str] = []
+
+    def flush_latin() -> None:
+        if latin:
+            tokens.append("".join(latin))
+            latin.clear()
+
+    def flush_cjk() -> None:
+        if len(cjk) == 1:
+            tokens.append(cjk[0])
+        elif cjk:
+            tokens.extend(cjk[i] + cjk[i + 1] for i in range(len(cjk) - 1))
+        cjk.clear()
+
+    for char in text.lower():
+        if ord(char) >= CJK_START and not char.isspace():
+            flush_latin()
+            cjk.append(char)
+        elif char.isalnum():
+            flush_cjk()
+            latin.append(char)
+        else:
+            flush_latin()
+            flush_cjk()
+
+    flush_latin()
+    flush_cjk()
+    return tokens
+
+
+def bm25_scores(query: str, documents: list[str],
+                k1: float = BM25_K1, b: float = BM25_B) -> list[float]:
+    """Score every document against the query using Okapi BM25.
+
+    Returns one score per document (higher is better); 0.0 means no overlap.
+    """
+    if not documents:
+        return []
+
+    query_terms = set(tokenize(query))
+    if not query_terms:
+        return [0.0] * len(documents)
+
+    doc_terms = [tokenize(document) for document in documents]
+    doc_lengths = [len(terms) for terms in doc_terms]
+    total_length = sum(doc_lengths)
+    average_length = (total_length / len(doc_lengths)) if total_length else 1.0
+
+    # Only the query terms need a document frequency.
+    frequency_in_docs = dict.fromkeys(query_terms, 0)
+    for terms in doc_terms:
+        for term in query_terms.intersection(terms):
+            frequency_in_docs[term] += 1
+
+    count = len(documents)
+    scores: list[float] = []
+    for terms, length in zip(doc_terms, doc_lengths):
+        term_counts: dict[str, int] = {}
+        for term in terms:
+            if term in frequency_in_docs:
+                term_counts[term] = term_counts.get(term, 0) + 1
+
+        score = 0.0
+        for term, frequency in term_counts.items():
+            doc_frequency = frequency_in_docs[term]
+            idf = math.log(1.0 + (count - doc_frequency + 0.5) / (doc_frequency + 0.5))
+            norm = k1 * (1.0 - b + b * (length / average_length))
+            score += idf * (frequency * (k1 + 1.0)) / (frequency + norm)
+        scores.append(score)
+    return scores
+
+
+def keyword_search(conn: sqlite3.Connection, query: str, top_k: int = 5,
+                   sources: list[str] | None = None) -> list[dict]:
+    """BM25 keyword search over the stored chunks."""
+    rows = fetch_chunks(conn, sources)
+    scores = bm25_scores(query, [row["text"] for row in rows])
+
+    hits = [
+        {
+            "source": row["source"],
+            "chunk_index": row["chunk_index"],
+            "text": row["text"],
+            "score": round(score, 4),
+        }
+        for row, score in zip(rows, scores)
+        if score > 0.0
+    ]
+    hits.sort(key=lambda item: item["score"], reverse=True)
+    return hits[: max(1, top_k)]
+
+
+def reciprocal_rank_fusion(result_lists: list[list[dict]], top_k: int = 5,
+                           k: int = RRF_K) -> list[dict]:
+    """Merge ranked result lists with Reciprocal Rank Fusion.
+
+    RRF combines rankings instead of raw scores, so the very different scales
+    of cosine similarity (0..1) and BM25 (unbounded) do not need calibrating.
+    """
+    merged: dict[tuple, dict] = {}
+    for results in result_lists:
+        for rank, hit in enumerate(results, start=1):
+            key = (hit["source"], hit["chunk_index"])
+            entry = merged.get(key)
+            if entry is None:
+                entry = {
+                    "source": hit["source"],
+                    "chunk_index": hit["chunk_index"],
+                    "text": hit["text"],
+                    "score": 0.0,
+                }
+                merged[key] = entry
+            entry["score"] += 1.0 / (k + rank)
+
+    ranked = sorted(merged.values(), key=lambda item: item["score"], reverse=True)
+    for entry in ranked:
+        entry["score"] = round(entry["score"], 6)
+    return ranked[: max(1, top_k)]
+def search(conn: sqlite3.Connection, query_vector: list[float],
+           top_k: int = 5, min_score: float = 0.0,
+           sources: list[str] | None = None) -> list[dict]:
+    """질의 벡터와 가장 유사한 청크 top_k 를 돌려준다."""
     scored: list[dict] = []
-    for row in conn.execute(sql, params):
+    for row in fetch_chunks(conn, sources):
         score = cosine(query_vector, json.loads(row["embedding"]))
         if score < min_score:
             continue
@@ -435,5 +576,58 @@ def semantic_search(query: str, top_k: int = 5, min_score: float = 0.0,
     conn = connect(path)
     try:
         return search(conn, query_vector, top_k, min_score, sources)
+    finally:
+        conn.close()
+# --------------------------------------------------------------------------
+# Retrieval entry point
+# --------------------------------------------------------------------------
+
+#: Supported retrieval modes.
+MODES = ("vector", "keyword", "hybrid")
+
+#: How many candidates each ranker contributes before fusion.
+CANDIDATE_FACTOR = 4
+
+
+def search_documents(query: str, top_k: int = 5, min_score: float = 0.0,
+                     sources: list[str] | None = None, mode: str = "hybrid",
+                     cfg: dict | None = None,
+                     db_path: str | os.PathLike | None = None) -> list[dict]:
+    """Retrieve chunks for a query.
+
+    Modes:
+      * ``vector``  - cosine similarity over embeddings (semantic)
+      * ``keyword`` - BM25 over tokenised text (exact terms, no embedding call)
+      * ``hybrid``  - both rankers merged with Reciprocal Rank Fusion (default)
+
+    ``min_score`` only applies to the vector ranker: after fusion the score is
+    rank-based, so a cosine threshold no longer has the same meaning.
+    """
+    cfg = cfg or load_config()
+    mode = (mode or "hybrid").lower()
+    if mode not in MODES:
+        raise ValueError(
+            f"unknown search mode: {mode} (expected one of {', '.join(MODES)})"
+        )
+
+    path = Path(db_path) if db_path else resolve_store_path(cfg)
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"색인 저장소가 없습니다: {path} (먼저 ingest.py 로 색인하세요)"
+        )
+
+    conn = connect(path)
+    try:
+        if mode == "keyword":
+            return keyword_search(conn, query, top_k, sources)
+
+        query_vector = embed_texts([query], cfg)[0]
+        if mode == "vector":
+            return search(conn, query_vector, top_k, min_score, sources)
+
+        candidates = max(top_k, top_k * CANDIDATE_FACTOR)
+        vector_hits = search(conn, query_vector, candidates, min_score, sources)
+        keyword_hits = keyword_search(conn, query, candidates, sources)
+        return reciprocal_rank_fusion([vector_hits, keyword_hits], top_k)
     finally:
         conn.close()
