@@ -485,6 +485,170 @@ __pycache__/
 
 ---
 
+## 13. Git / GitHub 워크플로
+
+### 13-1. 저장소 형태
+
+`cline_rag` 는 **독립 저장소** 입니다. 상위 `~/.openclaw/workspace` 에도 git 저장소가
+있으므로 주의가 필요합니다.
+
+| 항목 | 값 |
+|---|---|
+| 저장소 | `populous/cline-rag` (public) |
+| 기본 브랜치 | `main` |
+| remote | `origin` = `https://github.com/populous/cline-rag.git` |
+| 버전 단일 출처 | `src/rag_server.py` 의 `SERVER_VERSION` |
+
+> **중요**: 상위 workspace 저장소에서는 `cline_rag/` 를 **`git add` 하지 마세요.**
+> 중첩 저장소가 gitlink 로 들어가 오염됩니다. 막으려면 상위 `.gitignore` 에
+> `cline_rag/` 한 줄을 추가하세요.
+
+### 13-2. 최초 설정 (이미 완료된 절차)
+
+```powershell
+cd C:\path\to\cline_rag
+
+# 1) .gitattributes 를 먼저 (줄바꿈 churn 방지) — setup.ps1 은 CRLF 유지
+#    * text=auto eol=lf  /  *.ps1 text eol=crlf  /  *.sqlite3 binary
+
+# 2) main 브랜치로 초기화 (전역 defaultBranch 미설정 대비)
+git init -b main
+
+# 3) 커밋 신원 (전역 미설정이므로 로 지정)
+git config user.name  "populous"
+git config user.email "populous@empas.com"
+
+# 4) 스테이징 전 확인 — .venv/build/rag_store.sqlite3 가 보이면 중단
+git add -A
+git status --short
+git check-ignore -v .venv build rag_store.sqlite3
+
+# 5) 초기 커밋
+git commit -m "feat: add local RAG MCP server for Cline"
+
+# 6) GitHub 저장소 생성 + 푸시 + origin 자동 설정
+gh repo create cline-rag --public --source=. --remote=origin `
+  --description "Local RAG (retrieval-augmented generation) MCP server for Cline" `
+  --push
+```
+
+### 13-3. 일상 개발 흐름
+
+```powershell
+git switch main; git pull --ff-only      # 1) main 최신화
+git switch -c fix/chunk-boundary         # 2) 단기 브랜치
+
+# 3) 수정 + 로컬 검증
+python -m pytest tests -q
+python smoke_mcp.py
+ctest --preset default
+
+# 4) 커밋 (Conventional Commits)
+git add -A
+git commit -m "fix: correct chunk boundary at document end"
+
+# 5) 푸시 + PR
+git push -u origin fix/chunk-boundary
+gh pr create --base main --fill
+
+# 6) CI 확인 (초록이 될 때까지)
+gh pr checks --watch
+
+# 7) 병합 + 정리
+gh pr merge --squash --delete-branch
+git switch main; git pull --ff-only; git fetch --prune
+```
+
+브랜치 이름: `feat/…` `fix/…` `docs/…` `test/…` `chore/…` `release/…`
+
+### 13-4. Merge 정책
+
+| 상황 | 명령 | 이유 |
+|---|---|---|
+| 기능/수정 PR (기본) | `gh pr merge --squash --delete-branch` | main 히스토리를 릴리스 단위로 깔끔하게 |
+| 릴리스 브랜치 | `gh pr merge --merge --delete-branch` | 릴리스 경계를 merge 커밋으로 명시 |
+| main 최신화 | `git pull --ff-only` | 불필요한 merge 커밋 방지 |
+| 충돌 해결 | 브랜치에서 `git rebase main` 후 `git push --force-with-lease` | `--force` 대신 lease 사용 |
+
+### 13-5. 릴리스 절차 (SemVer)
+
+| 버전 | 올리는 시점 |
+|---|---|
+| MAJOR | MCP 도구 스키마/저장소 스키마 **호환성 파괴** (예: `search_docs` 인자 제거) |
+| MINOR | 하위호환 **기능 추가** (예: 하이브리드 검색, `sources` 필터) |
+| PATCH | 하위호환 **버그 수정** |
+
+```powershell
+# 1) 릴리스 브랜치
+git switch -c release/v1.1.0
+
+# 2) 두 곳만 갱신
+#    - src/rag_server.py : SERVER_VERSION = "1.1.0"
+#    - CHANGELOG.md      : ## [1.1.0] - YYYY-MM-DD
+
+# 3) 최종 검증
+python -m pytest tests -q
+ctest --preset default
+
+# 4) 릴리스 커밋 -> PR -> 병합(--merge 로 경계 표시)
+git add src/rag_server.py CHANGELOG.md
+git commit -m "chore(release): v1.1.0"
+git push -u origin release/v1.1.0
+gh pr create --base main --title "chore(release): v1.1.0" --fill
+gh pr merge --merge --delete-branch
+
+# 5) main 에서 태그 + 푸시
+git switch main; git pull --ff-only
+gh run list --branch main --limit 3        # CI 초록 확인
+git tag -a v1.1.0 -m "v1.1.0"
+git push origin main --follow-tags
+
+# 6) GitHub Release
+gh release create v1.1.0 --title "v1.1.0" --generate-notes
+```
+
+### 13-6. 핫픽스 릴리스 (긴급 수정)
+
+```powershell
+git switch -c fix/chunk-boundary v1.0.0     # 태그에서 분기
+# 수정 + 테스트
+git commit -m "fix: correct chunk boundary at document end"
+git switch main
+git merge --no-ff fix/chunk-boundary
+# SERVER_VERSION -> 1.0.1, CHANGELOG 갱신
+git tag -a v1.0.1 -m "v1.0.1"
+git push origin main --follow-tags
+gh release create v1.0.1 --generate-notes
+```
+
+### 13-7. 브랜치 보호 (선택)
+
+1인 개발이므로 **PR 은 필수, 승인은 불필요** 로 두는 것이 실용적입니다.
+
+```powershell
+gh api -X PUT repos/populous/cline-rag/branches/main/protection `
+  -F "required_status_checks[strict]=true" `
+  -F "required_status_checks[contexts][]=test (windows-latest)" `
+  -F "enforce_admins=false" `
+  -F "required_pull_request_reviews[required_approving_review_count]=0" `
+  -F "restrictions="
+```
+
+### 13-8. 트러블슈팅
+
+| 증상 | 원인 | 해결 |
+|---|---|---|
+| `UnicodeEncodeError` (CI) | 러너 콘솔이 cp1252 | 해당 스크립트에서 stdout/stderr 를 UTF-8 로 `reconfigure` (이 저장소는 적용됨) |
+| `Please tell me who you are` | 커밋 신원 미설정 | `git config user.name/user.email` (로컬) |
+| `src refspec main does not match any` | 커밋 전 푸시 | 먼저 커밋 |
+| `.venv` 가 커밋됨 | `.gitignore` 누락/staged | `git rm -r --cached .venv` 후 재커밋 |
+| CRLF 경고 폭주 | `.gitattributes` 없음 | 첫 커밋 **전**에 추가. 이미 늦었으면 `git add --renormalize .` |
+| `Test not available without configuration` | VS 다중 구성 제너레이터 | `ctest -C Debug` 또는 `ctest --preset default` |
+| PR CI 가 계속 실패 | 로컬과 환경 차이 | `gh run view <id> --log-failed` 로 실제 오류 확인 |
+| 잘못 푸시함 | 되돌리기 필요 | `git push --force-with-lease`, 저장소 삭제는 `gh repo delete populous/cline-rag --yes` |
+
+---
+
 ## 부록 A. 이 저장소의 검증 결과 (2026-09-20)
 
 | 항목 | 결과 |
@@ -501,6 +665,11 @@ __pycache__/
 | 임베딩 | Ollama `nomic-embed-text`, **768차원** |
 | 색인 | 5청크 / 2파일 / 768차원 |
 | MCP 등록 | `cline_rag\.venv\Scripts\python.exe` + `src\rag_server.py` |
+| Git 저장소 | `populous/cline-rag` (public, 기본 브랜치 `main`) |
+| 초기 커밋 | `a877371` feat: add local RAG MCP server for Cline (25 files, 3006 lines) |
+| 첫 PR | #1 fix: force UTF-8 stdout (squash merge → `7949010`), CI 33s **pass** |
+| 릴리스 | `v1.0.0` (태그 + GitHub Release) |
+| CI | GitHub Actions `CI` / windows-latest / Python 3.12 / pytest 49 + smoke + CTest 3 |
 
 ## 부록 B. 한눈에 보는 명령 요약
 
