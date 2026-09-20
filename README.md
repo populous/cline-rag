@@ -1,8 +1,14 @@
 # cline_rag
 
+[![CI](https://github.com/populous/cline-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/populous/cline-rag/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![Release](https://img.shields.io/github/v/release/populous/cline-rag)](https://github.com/populous/cline-rag/releases)
+
 Cline 에 붙이는 **로컬 RAG 검색 MCP 서버**. 외부 패키지 없이 표준 라이브러리만 씁니다.
 
 전체 구축 과정은 **[RAG_STEP_BY_STEP.md](RAG_STEP_BY_STEP.md)**  보세요.
+변경 이력은 **[CHANGELOG.md](CHANGELOG.md)** 에 있습니다.
 
 ## 구성
 
@@ -171,6 +177,48 @@ python smoke_mcp.py                  # MCP 스모크 (자식 프로세스)
 python -m pytest tests -q            # pytest 전체
 cmake --preset default ; ctest --preset default   # CMake/CTest 테스트 팩
 ```
+
+## 버전 관리 (Git / GitHub)
+
+이 저장소는 `populous/cline-rag` 이고 `main` 을 기본 브랜치로 씁니다.
+
+```powershell
+# 브랜치 -> 커밋 -> PR -> CI -> 병합
+git switch -c feat/hybrid-search
+git commit -m "feat: add BM25 hybrid search"
+git push -u origin feat/hybrid-search
+gh pr create --base main --fill
+gh pr checks --watch
+gh pr merge --squash --delete-branch
+```
+
+| 항목 | 규칙 |
+|---|---|
+| 브랜치 | `feat/…` `fix/…` `docs/…` `test/…` `chore/…` `release/…` |
+| 커밋 | Conventional Commits (`feat:`, `fix:`, `docs:`, `chore(release):`) |
+| 병합 | 기본 `--squash`, 릴리스 경계는 `--merge`, main 최신화는 `--ff-only` |
+| 버전 | SemVer. 단일 출처는 `src/rag_server.py` 의 `SERVER_VERSION` |
+| 릴리스 | `main` 에 태그 + `gh release create` |
+| 변경 이력 | `CHANGELOG.md` (Keep a Changelog) |
+
+릴리스 절차:
+
+```powershell
+git switch -c release/v1.1.0
+# SERVER_VERSION 과 CHANGELOG 갱신
+python -m pytest tests -q
+git commit -m "chore(release): v1.1.0"
+git push -u origin release/v1.1.0
+gh pr create --base main --title "chore(release): v1.1.0" --fill
+gh pr merge --merge --delete-branch
+
+git switch main; git pull --ff-only
+git tag -a v1.1.0 -m "v1.1.0"
+git push origin main --follow-tags
+gh release create v1.1.0 --title "v1.1.0" --generate-notes
+```
+
+전체 명령과 트러블슈팅은 **[RAG_STEP_BY_STEP.md](RAG_STEP_BY_STEP.md)** 13장을 보세요.
 
 ## 설계 메모
 
