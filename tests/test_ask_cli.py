@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import json
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -127,7 +129,14 @@ def test_mcp_status_missing_file_reports_error(tmp_path, capsys):
     assert "없습니다" in captured.out
 
 
-def test_mcp_install_then_status_roundtrip(tmp_path, capsys):
+def test_mcp_install_then_status_roundtrip(tmp_path, monkeypatch, capsys):
+    # CI 러너에는 이 저장소의 .venv 가 없다(시스템 파이썬에 바로 설치한다).
+    # 이 테스트는 install -> status 왕복 로직 자체를 검증하는 것이므로,
+    # ".venv 가 실제로 존재하는가" 라는 환경 의존적인 경고는 대상이 아니다.
+    # 항상 존재하는 경로(현재 인터프리터)를 가리키도록 고정해서 그 경고를
+    # 우회한다.
+    monkeypatch.setattr(ask, "_venv_python_path", lambda: Path(sys.executable))
+
     settings_path = tmp_path / "cline_mcp_settings.json"
 
     exit_code = ask.main(["--mcp-install", "--mcp-settings", str(settings_path)])
