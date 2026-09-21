@@ -192,3 +192,91 @@ def test_mcp_install_force_overwrites_existing(tmp_path, capsys):
 
     saved = json.loads(settings_path.read_text(encoding="utf-8"))
     assert saved["mcpServers"]["cline-rag"]["command"] != "old"
+
+
+# --------------------------------------------------------------------------
+# MCP (OpenCode 연동) 설정 옵션
+# --------------------------------------------------------------------------
+
+
+def test_mcp_print_opencode_outputs_valid_snippet(capsys):
+    exit_code = ask.main(["--mcp-print", "--mcp-target", "opencode"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads(captured.out)
+    entry = payload["mcp"]["cline-rag"]
+    assert entry["type"] == "local"
+    assert entry["command"][0].endswith("python.exe")
+    assert entry["command"][1].endswith("rag_server.py")
+    assert entry["enabled"] is True
+
+
+def test_mcp_status_opencode_missing_file_reports_error(tmp_path, capsys):
+    settings_path = tmp_path / "opencode.json"
+    exit_code = ask.main(["--mcp-status", "--mcp-target", "opencode",
+                          "--mcp-settings", str(settings_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert "없습니다" in captured.out
+
+
+def test_mcp_install_opencode_roundtrip(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(ask, "_venv_python_path", lambda: Path(sys.executable))
+
+    settings_path = tmp_path / "opencode.json"
+
+    exit_code = ask.main(["--mcp-install", "--mcp-target", "opencode",
+                          "--mcp-settings", str(settings_path)])
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "등록했습니다" in captured.out
+    assert settings_path.exists()
+
+    saved = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert saved["mcp"]["cline-rag"]["type"] == "local"
+
+    exit_code = ask.main(["--mcp-status", "--mcp-target", "opencode",
+                          "--mcp-settings", str(settings_path)])
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "등록됨" in captured.out
+
+
+def test_mcp_install_opencode_preserves_other_keys_and_servers(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(ask, "_venv_python_path", lambda: Path(sys.executable))
+
+    settings_path = tmp_path / "opencode.json"
+    settings_path.write_text(
+        json.dumps({
+            "$schema": "https://opencode.ai/config.json",
+            "mcp": {"other-server": {"type": "local", "command": ["x"], "enabled": True}},
+        }),
+        encoding="utf-8",
+    )
+
+    exit_code = ask.main(["--mcp-install", "--mcp-target", "opencode",
+                          "--mcp-settings", str(settings_path)])
+    assert exit_code == 0
+
+    saved = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert saved["$schema"] == "https://opencode.ai/config.json"
+    assert "other-server" in saved["mcp"]
+    assert "cline-rag" in saved["mcp"]
+
+
+def test_mcp_install_opencode_rejects_duplicate_without_force(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(ask, "_venv_python_path", lambda: Path(sys.executable))
+
+    settings_path = tmp_path / "opencode.json"
+
+    exit_code = ask.main(["--mcp-install", "--mcp-target", "opencode",
+                          "--mcp-settings", str(settings_path)])
+    assert exit_code == 0
+
+    exit_code = ask.main(["--mcp-install", "--mcp-target", "opencode",
+                          "--mcp-settings", str(settings_path)])
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "이미 등록" in captured.out

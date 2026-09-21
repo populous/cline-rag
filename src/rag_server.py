@@ -1,4 +1,4 @@
-"""rag_server.py -- Cline 에 붙이는 RAG MCP 서버.
+"""rag_server.py -- Cline/OpenCode 등 MCP 클라이언트에 붙이는 RAG MCP 서버.
 
 MCP 의 stdio 전송(줄 단위 JSON-RPC 2.0)은 표준 라이브러리로 직접 구현한다.
 검색/색인 로직은 rag_core.py 를 통해 LangChain + LangGraph + Chroma 를 쓴다
@@ -94,7 +94,7 @@ TOOLS: list[dict[str, Any]] = [
         "description": (
             "문서를 다시 색인한다(쓰기 도구). 문서를 추가·수정한 뒤 호출한다. "
             "색인은 별도 프로세스로 실행되므로 서버 stdout(MCP 통신)은 오염되지 않는다. "
-            "읽기 전용이 아니므로 autoApprove 에 넣지 말 것."
+            "읽기 전용이 아니므로 자동 승인 목록(autoApprove/permission allow)에 넣지 말 것."
         ),
         "inputSchema": {
             "type": "object",
