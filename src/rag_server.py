@@ -34,7 +34,7 @@ import rag_core as core  # noqa: E402  (경로 설정 후 임포트)
 PROJECT_DIR = core.PROJECT_DIR
 
 SERVER_NAME = "cline-rag"
-SERVER_VERSION = "2.0.0"
+SERVER_VERSION = "2.1.0"
 DEFAULT_PROTOCOL = "2025-06-18"
 SUPPORTED_PROTOCOLS = {"2024-11-05", "2025-03-26", "2025-06-18"}
 
