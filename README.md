@@ -5,8 +5,14 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Release](https://img.shields.io/github/v/release/populous/cline-rag)](https://github.com/populous/cline-rag/releases)
 
-Cline 에 붙이는 **로컬 RAG 검색 MCP 서버**. v2.0.0부터 **LangChain + LangGraph** 기반으로
-동작합니다(임베딩 · Chroma 벡터 저장소 · 청킹 · 검색 오케스트레이션).
+로컬 문서를 색인해서 검색하는 **RAG(검색 증강 생성) 도구**. v2.0.0부터
+**LangChain + LangGraph** 기반으로 동작합니다(임베딩 · Chroma 벡터 저장소 ·
+청킹 · 검색 오케스트레이션). 두 가지 방식으로 씁니다.
+
+- **터미널 CLI (`ask.ps1` / `ask.cmd`)** — 가장 빠른 사용법. 설치 후
+  `.\ask.ps1 "질문"` 한 줄로 바로 검색 결과를 봅니다.
+- **Cline MCP 서버 (`rag_server.py`)** — Cline 채팅 중에 `search_docs` 등의
+  도구를 스스로 호출하게 하려면 이 서버를 MCP 로 등록합니다(선택).
 
 **처음 사용하시나요?** **[GETTING_STARTED.md](GETTING_STARTED.md)** 에서
 설치부터 Cline 등록까지 순서대로 따라 하세요.

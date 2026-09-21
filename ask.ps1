@@ -17,6 +17,17 @@ param(
 $ErrorActionPreference = "Stop"
 Set-Location -Path $PSScriptRoot
 
+# PowerShell 은 외부(네이티브) 프로세스의 stdout 을 파이프/리다이렉션으로 받을 때
+# $OutputEncoding 변수를 기준으로 바이트를 텍스트로 해석한다. 이 값은 콘솔
+# 코드페이지(chcp)와 별개로 세션 시작 시 고정되며, 보통 한글 Windows 에서는
+# UTF-8 이 아니다. 그래서 "chcp 65001" 을 해도 파이프/리다이렉션 결과의 한글이
+# 깨지는 경우가 있다. 이 스크립트 안에서 강제로 UTF-8 로 맞춰서, 화면 출력이든
+# 파일로 리다이렉션(`.\ask.ps1 "질문" > out.txt`)이든 항상 한글이 정상으로
+# 나오게 한다.
+$OutputEncoding = [System.Text.UTF8Encoding]::new()
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+$env:PYTHONIOENCODING = "utf-8"
+
 $venvPython = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
 
 if (-not (Test-Path $venvPython)) {

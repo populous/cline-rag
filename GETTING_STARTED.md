@@ -72,7 +72,9 @@ Register this in your Cline MCP settings:
   args    : C:\...\cline-rag\src\rag_server.py
 ```
 
-이 두 줄(`command`, `args`)이 다음 단계에서 필요하니 기억해 두세요.
+이 두 줄(`command`, `args`)은 **4단계(선택, Cline 채팅 연동)**에서 필요하니
+기억해 두세요. 지금 당장은 필요 없습니다 — 바로 다음 단계에서 터미널로 질문할
+수 있습니다.
 
 > CMake 가 없거나 건너뛰고 싶다면:
 > `powershell -ExecutionPolicy Bypass -File .\setup.ps1 -SkipCmake`
@@ -88,7 +90,51 @@ Register this in your Cline MCP settings:
 
 ---
 
-## 3단계 — Cline 에 MCP 서버 등록
+## 3단계 — 지금 바로 질문해보기 (가장 빠른 방법)
+
+VS Code 나 Cline 을 켜지 않고도, **터미널에서 바로** 질문하고 답을 볼 수
+있습니다. 이게 가장 확실하고 가장 빠른 확인 방법입니다.
+
+```powershell
+cd C:\path\to\cline-rag
+.\ask.ps1 "청크 크기는 얼마가 적당한가?"
+```
+
+`Enter` 를 누르면 **화면에 즉시** 검색 결과가 출력됩니다. 가상환경을
+활성화하거나 `.venv` 경로를 직접 입력할 필요가 없습니다 — `ask.ps1` 이 항상
+이 프로젝트의 `.venv` 파이썬을 자동으로 찾아서 실행해 줍니다
+(cmd.exe 를 쓰신다면 `ask.cmd "질문"` 도 동일하게 동작합니다).
+
+**실행 결과 예시:**
+
+```
+'청크 크기는 얼마가 적당한가?' [hybrid] 검색 결과 3건
+
+[1] score=0.032787 | docs\sample.md#chunk1
+## 4. 청크 크기 설계
+
+청크가 너무 작으면 문맥이 부족하고, 너무 크면 검색 정밀도가 떨어진다.
+일반적으로 500~1000자, 겹침은 청크 크기의 10~20% 를 권장한다.
+이 프로젝트의 기본값은 size 800, overlap 120 이다.
+...
+```
+
+이렇게 결과가 나오면 색인/검색이 정상 동작하는 것입니다. `ask.ps1` 자세한
+옵션(`--top-k`, `--mode`, `--json` 등)은 6단계에서 다룹니다.
+
+> **MCP/서버 기동 자체를 확인하고 싶다면**(예: Cline 연동 전 사전 점검):
+> ```powershell
+> .\.venv\Scripts\python.exe smoke_mcp.py
+> ```
+> `모든 검사 통과` 가 나오면 MCP 서버도 정상입니다.
+
+---
+
+## 4단계 — 선택: Cline 채팅에서도 쓰고 싶다면 (MCP 서버 등록)
+
+`ask.ps1` 로 터미널에서 질문하는 것만으로도 충분하다면 이 단계는 건너뛰어도
+됩니다. **Cline 과 대화하는 중에 Cline 이 스스로 문서를 검색하게** 하려면
+MCP 서버로 등록하세요.
 
 1. VS Code 에서 Cline 확장을 엽니다.
 2. Cline 설정에서 **MCP Servers** 항목을 찾아 설정 파일을 엽니다. 보통 경로는:
@@ -120,33 +166,11 @@ Register this in your Cline MCP settings:
 
 4. 설정 파일을 저장하면 Cline 이 자동으로 서버를 인식합니다. Cline 의 MCP
    서버 목록에서 `cline-rag` 가 초록불(연결됨)로 보이면 성공입니다.
-
----
-
-## 4단계 — 제대로 동작하는지 확인
-
-VS Code 를 열지 않고도 터미널에서 바로 확인할 수 있습니다.
-
-```powershell
-cd C:\path\to\cline-rag
-.\.venv\Scripts\python.exe smoke_mcp.py
-```
-
-`모든 검사 통과` 가 나오면 서버가 정상 동작한다는 뜻입니다.
-
-**바로 검색을 해보고 싶다면** `ask.ps1` 를 쓰세요(자세한 사용법은 6단계
-참고). 질문을 그냥 따옴표로 감싸서 인자로 넘기면 됩니다 — 가상환경을
-활성화하거나 `.venv` 경로를 직접 입력할 필요도 없습니다:
-
-```powershell
-.\ask.ps1 "청크 크기는 얼마가 적당한가?"
-```
-
-검색 결과가 출력되면 정상입니다. Cline 채팅창에서는 이렇게 확인해 보세요:
-
-> "search_docs 로 '청크 크기'에 대해 검색해줘"
-
-Cline 이 `search_docs` 도구를 스스로 호출하고 검색 결과를 바탕으로 답하면 성공입니다.
+5. Cline 채팅창에서 이렇게 확인해 보세요:
+   > "search_docs 로 '청크 크기'에 대해 검색해줘"
+   Cline 이 `search_docs` 도구를 스스로 호출하고 검색 결과를 바탕으로
+   답하면 성공입니다. 결과는 방금 3단계에서 터미널로 본 것과 동일합니다
+   (내부적으로 완전히 같은 코드 경로를 씁니다).
 
 ---
 
@@ -351,14 +375,21 @@ A. `command` 경로가 `.venv\Scripts\python.exe` 의 **절대 경로**인지, �
    확인하세요. 터미널에서 `.\.venv\Scripts\python.exe smoke_mcp.py` 가 통과하는지
    먼저 확인하면 원인을 좁힐 수 있습니다.
 
-**Q. 터미널에서 명령을 실행하면 한글이 깨지거나(`?`, 물음표 등) 스크립트가
-자꾸 이상하게 동작해요.**
-A. Windows PowerShell 콘솔의 코드페이지(cp949 등)와 파이프 인코딩이 맞지
-   않아서 생기는 문제입니다. 이 프로젝트의 CLI 들(`ask.py`, `ingest.py`,
-   `rag_server.py`)은 내부적으로 stdout/stderr 를 UTF-8 로 강제 고정하므로,
-   **파이프나 리다이렉션 없이 인자로만 실행**하면 문제가 없습니다
-   (`.\ask.ps1 "질문"` 처럼). 굳이 결과를 파일로 저장해야 한다면
-   `... | Out-File -Encoding utf8 결과.txt` 처럼 인코딩을 명시하세요.
+**Q. 터미널에서 명령을 실행하면 한글이 깨지거나(`?`, 물음표, 깨진 문자 등)
+스크립트가 자꾸 이상하게 동작해요.**
+A. Windows PowerShell 이 외부 프로세스(파이썬)의 출력을 콘솔에 표시하거나
+   파일로 리다이렉션할 때, 콘솔 코드페이지(`chcp`)와는 별개로
+   `$OutputEncoding` / `[Console]::OutputEncoding` 값을 기준으로 바이트를
+   해석합니다. 이 값이 UTF-8 이 아니면 `chcp 65001` 을 해도 한글이 깨집니다.
+   `ask.ps1` / `ask.cmd` 는 시작할 때 이 값을 **강제로 UTF-8 로 맞추므로**,
+   화면 출력이든 `> 결과.txt` 로 리다이렉션이든 항상 한글이 정상으로
+   나옵니다. 따라서:
+   - 질문할 때는 **`python src\ask.py ...` 를 직접 쓰지 말고 `.\ask.ps1 "질문"`
+     (또는 cmd.exe 에서 `ask.cmd "질문"`) 을 쓰세요.**
+   - 결과를 파일로 저장하려면 `.\ask.ps1 "질문" > 결과.txt` 처럼 그대로
+     리다이렉션해도 됩니다(내부에서 UTF-8 로 이미 맞춰져 있습니다). 단,
+     PowerShell 5.1 의 `>` 자체는 파일을 UTF-16LE 로 쓰는 점은 별개
+     이슈이니, 다른 프로그램에서 그 파일을 읽을 때는 인코딩을 확인하세요.
 
 **Q. `python src\ask.py "질문"` 을 쳤더니
 `ModuleNotFoundError: No module named 'langchain_community'` 가 나요.**

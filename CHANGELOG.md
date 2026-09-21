@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ask.ps1` / `ask.cmd`: fix Korean text getting mangled when the script's
+  stdout is piped, redirected to a file, or captured by the caller.
+  PowerShell interprets a native process's stdout using `$OutputEncoding` /
+  `[Console]::OutputEncoding`, which is independent of the console codepage
+  (`chcp`) and is not UTF-8 by default on Korean Windows. The launchers now
+  force both to UTF-8 at startup, so `.\ask.ps1 "질문"` renders correctly on
+  screen and in redirected output regardless of the caller's terminal setup.
+- `GETTING_STARTED.md` / `README.md`: reorganized so the terminal CLI
+  (`ask.ps1` / `ask.cmd`) is presented as the primary, lowest-friction way to
+  use this project. Registering the MCP server for Cline chat is now an
+  explicit, clearly-labeled optional step, instead of being interleaved with
+  the CLI instructions. This addresses confusion where "run this Python
+  script to see a MCP tool response" was mistaken for "Cline answers
+  immediately in chat" -- they are two different entry points into the same
+  `rag_core.search_documents()` code path.
 - `ask.ps1` (and `ask.cmd` for cmd.exe): launcher scripts that always run
   `src/ask.py` through the project's `.venv` interpreter, regardless of
   what `python` resolves to on the caller's PATH. This avoids the
