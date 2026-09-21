@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- OpenCode (opencode.ai) MCP integration: the `cline-rag` MCP server can now
+  be registered with OpenCode in addition to Cline. OpenCode v2 reads its
+  config from `~/.config/opencode/opencode.json` (global) or a project-level
+  `opencode.json`, and declares a local MCP server under the `mcp` key as
+  `{"type": "local", "command": ["<.venv python>", "src/rag_server.py"], "enabled": true}`
+  -- unlike Cline, `command` is a single array that merges the separate
+  `command`/`args` keys. The server's four tools (`search_docs`,
+  `list_indexed_sources`, `index_status`, `reindex`) then become available to
+  OpenCode's LLM under the `cline-rag` prefix.
+
 ## [2.0.0] - 2026-09-21
 
 ### Added
