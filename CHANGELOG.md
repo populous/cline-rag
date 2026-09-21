@@ -39,6 +39,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `requirements-optional.txt` dropped `numpy` (now a transitive
   dependency of `chromadb`)
 
+### Why LangChain + LangGraph
+
+- **Standardised embedding providers**: `OllamaEmbeddings` and
+  `OpenAIEmbeddings` share the same `Embeddings` interface
+  (`embed_documents` / `embed_query`), removing the hand-rolled
+  `urllib` request/response handling per provider. Adding another
+  provider (Bedrock, HuggingFace, ...) is now a matter of implementing
+  that same interface.
+- **A battle-tested vector store**: `Chroma` provides an HNSW index,
+  metadata filtering (`where`), and collection-level upsert/delete out
+  of the box — faster and less bug-prone at scale than a linear-scan
+  cosine loop over a hand-rolled SQLite/JSON vector store.
+- **More robust chunking**: `RecursiveCharacterTextSplitter` recursively
+  splits on a prioritised separator list (`\n\n` -> `\n` -> sentence ->
+  space -> character), a strategy that is widely used and tested across
+  the community, handling edge cases (code blocks, lists, mixed-script
+  text) more reliably than the previous hand-rolled paragraph splitter.
+- **Explicit, inspectable search flow**: the if/elif dispatch inside
+  `search_documents()` became a `StateGraph` with dedicated nodes and
+  conditional edges per mode, making the vector/keyword/hybrid paths
+  independently testable and visualisable (e.g. `get_graph()`), and
+  easier to extend later (reranking node, query-expansion node, etc.)
+- **Ecosystem reuse**: swapping in other LangChain document loaders
+  (`PyPDFLoader`, ...) or vector stores (FAISS, Pinecone, ...) no longer
+  requires rewriting project-specific code — only the LangChain
+  component changes, benefiting from community-maintained bug fixes.
+- **Easier testing**: a single deterministic fake implementing
+  `langchain_core.embeddings.Embeddings` now exercises the whole
+  pipeline (embed -> Chroma -> search) without Ollama/OpenAI, keeping
+  CI free of external services.
+- **Trade-off**: the "zero dependency" design goal is gone and
+  `chromadb` adds noticeable install/CI time (CTest timeouts raised
+  from 600s to 1200s). The MCP transport itself (stdio JSON-RPC) is
+  still a direct standard-library implementation.
+
 ### Notes
 
 - The MCP tool surface (`search_docs`, `list_indexed_sources`,
