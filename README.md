@@ -5,7 +5,17 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Release](https://img.shields.io/github/v/release/populous/cline-rag)](https://github.com/populous/cline-rag/releases)
 
-Cline 에 붙이는 **로컬 RAG 검색 MCP 서버**. 외부 패키지 없이 표준 라이브러리만 씁니다.
+로컬 문서를 색인해서 검색하는 **RAG(검색 증강 생성) 도구**. v2.0.0부터
+**LangChain + LangGraph** 기반으로 동작합니다(임베딩 · Chroma 벡터 저장소 ·
+청킹 · 검색 오케스트레이션). 두 가지 방식으로 씁니다.
+
+- **터미널 CLI (`ask.ps1` / `ask.cmd`)** — 가장 빠른 사용법. 설치 후
+  `.\ask.ps1 "질문"` 한 줄로 바로 검색 결과를 봅니다.
+- **Cline MCP 서버 (`rag_server.py`)** — Cline 채팅 중에 `search_docs` 등의
+  도구를 스스로 호출하게 하려면 이 서버를 MCP 로 등록합니다(선택).
+
+**처음 사용하시나요?** **[GETTING_STARTED.md](GETTING_STARTED.md)** 에서
+설치부터 Cline 등록까지 순서대로 따라 하세요.
 
 전체 구축 과정은 **[RAG_STEP_BY_STEP.md](RAG_STEP_BY_STEP.md)**  보세요.
 변경 이력은 **[CHANGELOG.md](CHANGELOG.md)** 에 있습니다.
@@ -15,24 +25,30 @@ Cline 에 붙이는 **로컬 RAG 검색 MCP 서버**. 외부 패키지 없이 �
 ```
 cline_rag/
 ├── src/                       # 소스
-│   ├── rag_core.py            # 임베딩(Ollama/OpenAI) + SQLite 벡터 저장소 + 코사인 검색
-│   ├── ingest.py              # 문서 -> 청크 -> 임베딩 -> 색인 CLI
-│   └── rag_server.py          # MCP stdio 서버 (도구 3개)
+│   ├── rag_core.py            # 임베딩(Ollama/OpenAI) + Chroma 벡터 저장소
+│   │                          # + RecursiveCharacterTextSplitter + BM25 + LangGraph 검색
+│   ├── ingest.py              # 문서 -> 청크 -> 임베딩 -> Chroma 색인 CLI
+│   ├── ask.py                 # 터미널에서 바로 질의응답하는 CLI (MCP 몰라도 됨)
+│   └── rag_server.py          # MCP stdio 서버 (도구 4개)
 ├── tests/                     # pytest 테스트
-│   ├── conftest.py            # 공용 픽스처 (외부 서비스 불필요)
+│   ├── conftest.py            # 공용 픽스처 (외부 서비스 불필요, 가짜 Embeddings)
 │   ├── test_rag_core.py       # 코어 단위 테스트
-│   └── test_mcp_server.py     # MCP 프로토콜/도구 테스트
+│   ├── test_hybrid_search.py  # 토크나이저/BM25/RRF/검색 모드 테스트
+│   ├── test_mcp_server.py     # MCP 프로토콜/도구 테스트
+│   └── test_ask_cli.py        # ask.py CLI 테스트
 ├── docs/                      # 색인할 문서
 ├── CMakeLists.txt             # 테스트 패킹 유틸 (pytest -> CTest 래핑)
 ├── CMakePresets.json          # default / ninja / ci 프리셋
 ├── pytest.ini                 # pytest 설정
-├── config.json                # 임베딩 제공자 / 저장소 / 청킹 설정
+├── config.json                # 임베딩 제공자 / Chroma 저장소 / 청킹 설정
 ├── smoke_mcp.py               # 서버를 자식 프로세스로 띄우는 스모크 검사
 ├── setup.ps1                  # venv + 의존성 + 색인 + 테스트 (원클릭)
-├── requirements.txt           # 런런타임 의존성 (필수 서드파티 없음)
+├── ask.ps1 / ask.cmd          # .venv 를 자동으로 찾아 src\ask.py 를 실행하는 런처
+├── requirements.txt           # 런타임 의존성 (LangChain/LangGraph/Chroma)
 ├── requirements-dev.txt       # 테스트 의존성 (pytest)
-├── requirements-optional.txt  # 선택 확장 (numpy, pypdf)
-└── requirements.lock.txt      # pip freeze 기록
+├── requirements-optional.txt  # 선택 확장 (pypdf)
+├── requirements.lock.txt      # pip freeze 기록
+└── GETTING_STARTED.md         # 처음 사용자용 매뉴얼
 ```
 
 ## 빠른 시작
@@ -52,7 +68,7 @@ cd C:\path\to\cline_rag
 python -m venv .venv                              # 1) 가상환경
 .\.venv\Scripts\Activate.ps1                       # 2) 활성화
 python -m pip install --upgrade pip                # 3) pip 최신화
-python -m pip install -r requirements.txt          # 4) 런타임 의존성 (없음)
+python -m pip install -r requirements.txt          # 4) 런타임 의존성 (LangChain/LangGraph/Chroma)
 python -m pip install -r requirements-dev.txt      # 5) pytest
 
 ollama pull nomic-embed-text                       # 6) 임베딩 모델 (최초 1회)
@@ -89,6 +105,7 @@ cmake --build build --config Debug --target test-pack
 | `rag.unit` | `pytest tests/test_rag_core.py -v` | `rag;unit` |
 | `rag.hybrid` | `pytest tests/test_hybrid_search.py -v` | `rag;unit;hybrid` |
 | `rag.mcp` | `pytest tests/test_mcp_server.py -v` | `rag;mcp;protocol` |
+| `rag.cli` | `pytest tests/test_ask_cli.py -v` | `rag;unit;cli` |
 | `rag.smoke` | `smoke_mcp.py` (자식 프로세스 핸드셰이크) | `rag;smoke` |
 
 CMake 옵션:
@@ -111,28 +128,31 @@ ctest --test-dir build-ninja --output-on-failure
 
 | 파일 | 내용 | 설치 시점 |
 |---|---|---|
-| `requirements.txt` | 런타임 — **서드파티 없음** (표준 라이브러리만) | 항상 |
+| `requirements.txt` | 런타임 — LangChain/LangGraph/Chroma 등 | 항상 |
 | `requirements-dev.txt` | `pytest>=8.0` | 테스트/CMake |
-| `requirements-optional.txt` | `numpy`, `pypdf` | 필요할 때만 |
+| `requirements-optional.txt` | `pypdf` | 필요할 때만 |
 
-**필수 서드파티 패키지가 없습니다.** 사용 중인 표준 라이브러리:
+핵심 런타임 의존성(`requirements.txt`):
 
 ```
-argparse, json, math, os, pathlib, sqlite3,
-subprocess, sys, traceback, typing, urllib
+langchain-core, langchain-text-splitters, langchain-chroma, chromadb,
+langchain-ollama, langchain-openai, langchain-community, rank_bm25, langgraph
 ```
 
-이유는 Python 3.14 환경에서 `pip install` 없이도 동작하도록 만들었기 때문입니다.
-이유는 Python 3.14 환경에서 `pip install` 없이도 동작하도록 만들었기 때문입니다.
-MCP 서버(stdio JSON-RPC), 벡터 저장소(sqlite3), 유사도 계산(순수 파이썬),
-키워드 검색(BM25), 순위 융합(RRF)을 모두 직접 구현했습니다.
-`requirements.txt` 가 비어 있는 것은 누락이 아니라 설계입니다.
-모두 직접 구현했습니다. `requirements.txt` 가 비어 있는 것은 누락이 아니라 설계입니다.
+* **임베딩**: `langchain_ollama.OllamaEmbeddings` / `langchain_openai.OpenAIEmbeddings`
+* **벡터 저장소**: `langchain_chroma.Chroma` (로컬 디스크 영속, 별도 서버 불필요)
+* **청킹**: `langchain_text_splitters.RecursiveCharacterTextSplitter`
+* **키워드 검색**: `langchain_community.retrievers.BM25Retriever` + `rank_bm25`
+  (CJK bigram 토크나이저는 자체 구현)
+* **검색 오케스트레이션**: `langgraph.graph.StateGraph` 로 vector/keyword/hybrid 모드를
+  노드/조건부 엣지로 분기
+* MCP 서버(stdio JSON-RPC)는 여전히 표준 라이브러리로 직접 구현했습니다
+  (별도 웹 프레임워크 불필요).
 
 선택 확장이 필요할 때만:
 
 ```powershell
-python -m pip install -r requirements-optional.txt   # numpy, pypdf
+python -m pip install -r requirements-optional.txt   # pypdf
 ```
 
 ## 제공 도구
@@ -160,6 +180,17 @@ python -m pip install -r requirements-optional.txt   # numpy, pypdf
   임계값이 필요하면 `mode="vector"` 를 쓰세요.
 
 ## Cline 등록
+
+`ask.py` 에 등록/확인/자동 설치 옵션이 내장되어 있습니다(수동으로 JSON을
+직접 만들 필요가 없습니다):
+
+```powershell
+.\ask.ps1 --mcp-print     # 등록용 JSON 조각만 화면에 출력 (복사해서 붙여넣기용)
+.\ask.ps1 --mcp-status    # 실제 등록 여부/경로 일치 여부를 확인
+.\ask.ps1 --mcp-install   # 설정 파일에 자동으로 등록 (기존 값이 있으면 --force 필요)
+```
+
+수동으로 등록하려면 아래 경로의 파일을 직접 편집하세요:
 
 `C:\Users\<you>\.cline\data\settings\cline_mcp_settings.json`
 
@@ -191,6 +222,20 @@ python src\ingest.py --reset         # 전체 재색인
 python src\ingest.py --prune         # 삭삭제된 파일 청크 제거
 python src\ingest.py --stats         # 현황
 python src\ingest.py --list          # 색색인된 파일 목록
+
+# 질의응답 (MCP/Cline 없이 터미널에서 바로. .venv 를 자동으로 찾아 실행한다)
+.\ask.ps1 "질문"                          # hybrid 검색 (기본)
+.\ask.ps1 "질문" --mode vector --top-k 5  # 순수 의미 검색
+.\ask.ps1 "질문" --json                   # 스크립트 연동용 JSON 출력
+# cmd.exe 에서는: ask.cmd "질문"
+# .venv 를 알고 있다면 직접 지정도 가능: .\.venv\Scripts\python.exe src\ask.py "질문"
+
+# Cline MCP 등록 관리 (질문 없이 사용)
+.\ask.ps1 --mcp-print                 # 등록용 JSON 조각 출력
+.\ask.ps1 --mcp-status                # 등록 여부/경로 확인
+.\ask.ps1 --mcp-install                # 자동 등록 (이미 있으면 --force 필요)
+.\ask.ps1 --mcp-install --force        # 기존 등록 덮어쓰기
+.\ask.ps1 --mcp-status --mcp-settings C:\path\to\custom.json   # 설정 파일 경로 지정
 
 # 테스트
 python smoke_mcp.py                  # MCP 스모크 (자식 프로세스)
@@ -242,10 +287,16 @@ gh release create v1.1.0 --title "v1.1.0" --generate-notes
 
 ## 설계 메모
 
-- **의존성 0**: Python 3.14 에서 `pip install` 없이 동작하도록 `sqlite3`/`urllib`/`math`/`json` 만 사용합니다.
-- **src 레이아웃**: 소스는 `src/`, 데이터(`config.json`, `rag_store.sqlite3`)는 프로젝트 루트에 둡니다. `rag_core.PROJECT_DIR` 이 기준을 결정합니다.
+- **LangChain + LangGraph 기반(v2.0.0)**: 임베딩/벡터 저장소/청킹/키워드 검색은
+  LangChain 컴포넌트로, 검색 오케스트레이션(모드 분기)은 LangGraph `StateGraph` 로
+  구현합니다. MCP 프로토콜 자체는 여전히 표준 라이브러리로 직접 구현합니다.
+- **src 레이아웃**: 소스는 `src/`, 데이터(`config.json`, `rag_store_chroma/`)는 프로젝트
+  루트에 둡니다. `rag_core.PROJECT_DIR` 이 기준을 결정합니다.
 - **MCP 직접 구현**: `initialize`, `ping`, `tools/list`, `tools/call` 만 구현한 최소 stdio JSON-RPC 서버입니다.
 - **stdout 은 프로토콜 전용**: 로그는 전부 stderr(UTF-8 고정)로 나갑니다.
-- **경로 해석 단일화**: 세 도구가 `load_config_and_store()` 하나만 써서 경로 기준이 어긋날 수 없습니다.
+- **경로 해석 단일화**: 네 도구가 `load_config_and_store()` 하나만 써서 경로 기준이 어긋날 수 없습니다.
 - **임베딩 모델 고정**: 색인 후 모델을 바꾸면 벡터 공간이 달라지므로 `--reset` 이 필요합니다.
-- **테스트는 외부 서비스 불필요**: `conftest.py` 가 임베딩을 결정적 가짜 함수로 바꿔 Ollama/OpenAI 없이 돕니다.
+- **테스트는 외부 서비스 불필요**: `conftest.py` 가 `langchain_core.embeddings.Embeddings` 를
+  구현한 결정적 가짜 임베딩으로 바꿔 Ollama/OpenAI 없이 돕니다.
+- **저장소 포맷 변경(breaking)**: v1.x 의 `rag_store.sqlite3` 는 v2.0.0 의 Chroma
+  저장소(`rag_store_chroma/`)와 호환되지 않습니다. `ingest.py --reset` 으로 재색인하세요.

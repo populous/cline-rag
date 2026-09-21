@@ -1,7 +1,8 @@
 """test_mcp.py -- rag_server.py 가 MCP 규약대로 응답하는지 검사하는 클라이언트.
 
 서버를 자식 프로세스로 띄우고 stdio 로 JSON-RPC 를 주고받는다.
-외부 의존성 없이 표준 라이브러리만 사용한다.
+이 스크립트 자체는 표준 라이브러리만 사용하지만, rag_server.py 가 내부적으로
+LangChain/LangGraph/Chroma 를 사용하므로 requirements.txt 설치가 필요하다.
 
 사용:
     python test_mcp.py

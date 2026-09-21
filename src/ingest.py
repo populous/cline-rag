@@ -69,21 +69,19 @@ def main(argv: list[str] | None = None) -> int:
         cfg["embedding"]["provider"] = args.provider
 
     db_path = core.resolve_store_path(cfg, PROJECT_DIR)
+    store_exists = db_path.is_dir() and any(db_path.iterdir())
     if args.stats or args.list:
-        if not db_path.is_file():
+        if not store_exists:
             print(f"저장소가 없습니다: {db_path}")
             return 1
-        conn = core.connect(db_path)
-        try:
-            if args.list:
-                for item in core.list_sources(conn):
-                    print(f"{item['chunks']:5d}  {item['source']}")
-            else:
-                print(f"저장소: {db_path}")
-                for key, value in core.store_stats(conn).items():
-                    print(f"  {key}: {value}")
-        finally:
-            conn.close()
+        store = core.connect(db_path, cfg)
+        if args.list:
+            for item in core.list_sources(store):
+                print(f"{item['chunks']:5d}  {item['source']}")
+        else:
+            print(f"저장소: {db_path}")
+            for key, value in core.store_stats(store).items():
+                print(f"  {key}: {value}")
         return 0
 
     targets = args.paths or [str(PROJECT_DIR / "docs")]
@@ -96,42 +94,41 @@ def main(argv: list[str] | None = None) -> int:
     print(f"저장소        : {db_path}")
     print(f"대상 파일     : {len(files)}개")
 
-    rows = core.build_chunk_rows(files, cfg)
-    if not rows:
+    docs = core.build_documents(files, cfg)
+    if not docs:
         print("생성된 청크가 없습니다(빈 문서).")
         return 1
 
-    conn = core.connect(db_path)
-    try:
-        if args.reset:
-            core.reset_store(conn)
-            print("저장소를 비웠습니다.")
+    store = core.connect(db_path, cfg)
 
-        if args.prune:
-            known = {row["source"] for row in rows}
-            for item in core.list_sources(conn):
-                if item["source"] not in known:
-                    core.delete_source(conn, item["source"])
-                    print(f"제거: {item['source']}")
+    if args.reset:
+        core.reset_store(store)
+        print("저장소를 비웠습니다.")
 
-        texts = [row["text"] for row in rows]
-        print(f"청크 {len(texts)}개 임베딩 중...")
+    if args.prune:
+        known = {doc.metadata["source"] for doc in docs}
+        for item in core.list_sources(store):
+            if item["source"] not in known:
+                core.delete_source(store, item["source"])
+                print(f"제거: {item['source']}")
 
-        def progress(done: int, total: int) -> None:
-            sys.stdout.write(f"\r  진행 {done}/{total}")
-            sys.stdout.flush()
+    print(f"청크 {len(docs)}개 임베딩/색인 중...")
 
-        vectors = core.embed_batches(texts, cfg, args.batch_size, progress)
-        print()
+    written = 0
+    total = len(docs)
+    for start in range(0, total, args.batch_size):
+        batch = docs[start:start + args.batch_size]
+        written += core.upsert_documents(store, batch)
+        done = min(start + args.batch_size, total)
+        sys.stdout.write(f"\r  진행 {done}/{total}")
+        sys.stdout.flush()
+    print()
 
-        written = core.upsert_chunks(conn, rows, vectors, cfg)
-        stats = core.store_stats(conn)
-        print(f"색인 완료: {written}개 청크 저장")
-        print(f"  총 청크   : {stats['chunks']}")
-        print(f"  총 파일   : {stats['sources']}")
-        print(f"  벡터 차원 : {stats['embedding_dim']}")
-    finally:
-        conn.close()
+    stats = core.store_stats(store)
+    print(f"색인 완료: {written}개 청크 저장")
+    print(f"  총 청크        : {stats['chunks']}")
+    print(f"  총 파일        : {stats['sources']}")
+    print(f"  임베딩 제공자  : {stats['embedding_provider']}")
     return 0
 
 

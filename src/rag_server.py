@@ -1,12 +1,14 @@
-"""rag_server.py -- Cline 에 붙이는 RAG MCP 서버 (표준 라이브러리만 사용).
+"""rag_server.py -- Cline 에 붙이는 RAG MCP 서버.
 
-MCP 의 stdio 전송(줄 단위 JSON-RPC 2.0)을 직접 구현하므로
-`pip install` 없이 바로 동작한다.
+MCP 의 stdio 전송(줄 단위 JSON-RPC 2.0)은 표준 라이브러리로 직접 구현한다.
+검색/색인 로직은 rag_core.py 를 통해 LangChain + LangGraph + Chroma 를 쓴다
+(자세한 내용은 requirements.txt, README.md 참고).
 
 제공 도구(tools):
-  * search_docs(query, top_k, min_score) : 의미 기반 문서 검색
-  * list_indexed_sources()               : 색인된 파일 목록
-  * index_status()                       : 색인 현황(청크/파일/차원)
+  * search_docs(query, top_k, min_score, sources, mode) : 문서 검색
+  * list_indexed_sources()                              : 색인된 파일 목록
+  * index_status()                                      : 색인 현황
+  * reindex(paths, reset)                                : 재색인(쓰기 도구)
 
 주의: stdout 은 MCP 프로토콜 전용이다. 로그는 반드시 stderr 로 보낸다.
 """
@@ -32,7 +34,7 @@ import rag_core as core  # noqa: E402  (경로 설정 후 임포트)
 PROJECT_DIR = core.PROJECT_DIR
 
 SERVER_NAME = "cline-rag"
-SERVER_VERSION = "1.1.0"
+SERVER_VERSION = "2.0.0"
 DEFAULT_PROTOCOL = "2025-06-18"
 SUPPORTED_PROTOCOLS = {"2024-11-05", "2025-03-26", "2025-06-18"}
 
@@ -205,15 +207,17 @@ def tool_search_docs(args: dict) -> dict:
     return text_content("\n".join(lines).rstrip())
 
 
+def store_exists(db_path: Path) -> bool:
+    """Chroma persist_directory 가 실제로 색인된 상태인지 확인한다."""
+    return db_path.is_dir() and any(db_path.iterdir())
+
+
 def tool_list_indexed_sources(_args: dict) -> dict:
-    _cfg, db_path = load_config_and_store()
-    if not db_path.is_file():
+    cfg, db_path = load_config_and_store()
+    if not store_exists(db_path):
         return text_content("색인 저장소가 아직 없습니다. ingest.py 를 먼저 실행하세요.")
-    conn = core.connect(db_path)
-    try:
-        items = core.list_sources(conn)
-    finally:
-        conn.close()
+    store = core.connect(db_path, cfg)
+    items = core.list_sources(store)
     if not items:
         return text_content("색인된 파일이 없습니다.")
     lines = [f"색인된 파일 {len(items)}개", ""]
@@ -222,14 +226,11 @@ def tool_list_indexed_sources(_args: dict) -> dict:
 
 
 def tool_index_status(_args: dict) -> dict:
-    _cfg, db_path = load_config_and_store()
-    if not db_path.is_file():
+    cfg, db_path = load_config_and_store()
+    if not store_exists(db_path):
         return text_content("색인 저장소가 아직 없습니다. ingest.py 를 먼저 실행하세요.")
-    conn = core.connect(db_path)
-    try:
-        stats = core.store_stats(conn)
-    finally:
-        conn.close()
+    store = core.connect(db_path, cfg)
+    stats = core.store_stats(store)
     payload = {"store": str(db_path), **stats}
     return text_content(json.dumps(payload, ensure_ascii=False, indent=2))
 

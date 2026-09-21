@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 *.pyo
 rag_store.sqlite3
+rag_store_chroma/
 _*.txt
 _*.py
 

@@ -12,8 +12,8 @@
     }
   },
   "store": {
-    "path": "rag_store.sqlite3",
-    "dim": 768
+    "path": "rag_store_chroma",
+    "collection": "cline_rag"
   },
   "chunking": {
     "size": 800,
