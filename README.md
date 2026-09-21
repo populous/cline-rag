@@ -227,6 +227,71 @@ Cline 을 계속 쓰려면 `--mcp-target cline`(기본값)으로 동일한 옵�
 등록됩니다. 규칙 파일은 `.clinerules/`(또는 `clinerules-template.md`)를
 쓰세요.
 
+## ask CLI 매뉴얼
+
+`ask` 는 색인된 문서에 **터미널에서 바로** 질문하는 CLI 입니다.
+`.venv` 를 자동으로 찾아 실행하는 래퍼(`ask.ps1`/`ask.cmd`)를 쓰면 됩니다.
+
+### 실행 방법
+
+```powershell
+.\ask.ps1 "질문"                                    # PowerShell (권장)
+ask.cmd "질문"                                      # cmd.exe
+.\.venv\Scripts\python.exe src\ask.py "질문"        # 직접 실행
+```
+
+### 검색 옵션
+
+| 옵션 | 기본값 | 설명 |
+|---|---|---|
+| `query` (위치 인자) | — | 검색할 질문/키워드 |
+| `--top-k N` | `3` | 가져올 청크 수 |
+| `--mode M` | `hybrid` | `hybrid`(벡터+BM25) / `vector`(의미) / `keyword`(정확 용어) |
+| `--min-score F` | `0.0` | 코사인 유사도 하한 (**`vector` 모드에서만** 적용) |
+| `--sources PATH...` | 전체 | 색인된 특정 파일 경로로만 제한 |
+| `--config PATH` | `config.json` | 설정 파일 경로 |
+| `--json` | off | 사람이 읽는 형식 대신 JSON 출력 |
+
+### 검색 예시
+
+```powershell
+.\ask.ps1 "반차 3회는 연차로 며칠인가?"                    # hybrid, top-3
+.\ask.ps1 "청크 크기" --top-k 1                           # top-1만
+.\ask.ps1 "임베딩 모델" --mode vector --min-score 0.3     # 의미 검색 + 임계값
+.\ask.ps1 "Ollama" --mode keyword                         # 정확 용어(임베딩 호출 없음)
+.\ask.ps1 "질문" --sources docs\sample.md                 # 특정 파일만
+.\ask.ps1 "질문" --json > result.json                     # JSON 출력 저장
+```
+
+### MCP 등록 관리 옵션 (질문 없이 사용)
+
+| 옵션 | 설명 |
+|---|---|
+| `--mcp-print` | 등록용 JSON 조각 출력 후 종료 |
+| `--mcp-install` | 설정 파일에 자동 등록 |
+| `--mcp-status` | 등록 여부/경로 일치 확인 |
+| `--force` | `--mcp-install` 시 기존 등록 덮어쓰기 |
+| `--mcp-target T` | 대상 클라이언트: `cline`(기본) / `opencode` |
+| `--mcp-settings PATH` | 설정 파일 경로 (생략 시 대상의 기본 경로) |
+
+```powershell
+.\ask.ps1 --mcp-print --mcp-target opencode    # OpenCode 등록용 JSON 출력
+.\ask.ps1 --mcp-install --mcp-target opencode  # OpenCode 자동 등록
+.\ask.ps1 --mcp-status --mcp-target opencode   # 등록 확인
+.\ask.ps1 --mcp-install --force                # 기본(cline) 덮어쓰기
+```
+
+### 검색 모드 선택
+
+| 상황 | `--mode` |
+|---|---|
+| 일반적인 질문 | `hybrid` (기본) |
+| 표현이 달라도 의미로 찾아야 할 때 | `vector` |
+| 함수명·에러코드·고유명사 등 정확한 용어 | `keyword` |
+
+> 주의: `hybrid`/`keyword` 의 점수는 RRF 순위 점수라 `--min-score` 가 적용되지
+> 않습니다. 코사인 임계값이 필요하면 `--mode vector` 와 함께 쓰세요.
+
 ## 명령 요약
 
 ```powershell
@@ -237,19 +302,7 @@ python src\ingest.py --prune         # 삭삭제된 파일 청크 제거
 python src\ingest.py --stats         # 현황
 python src\ingest.py --list          # 색색인된 파일 목록
 
-# 질의응답 (MCP 없이 터미널에서 바로. .venv 를 자동으로 찾아 실행한다)
-.\ask.ps1 "질문"                          # hybrid 검색 (기본)
-.\ask.ps1 "질문" --mode vector --top-k 5  # 순수 의미 검색
-.\ask.ps1 "질문" --json                   # 스크립트 연동용 JSON 출력
-# cmd.exe 에서는: ask.cmd "질문"
-# .venv 를 알고 있다면 직접 지정도 가능: .\.venv\Scripts\python.exe src\ask.py "질문"
-
-# MCP 등록 관리 (OpenCode/Cline, 질문 없이 사용)
-.\ask.ps1 --mcp-print --mcp-target opencode    # OpenCode 등록용 JSON 조각 출력
-.\ask.ps1 --mcp-install --mcp-target opencode  # OpenCode 자동 등록 (이미 있으면 --force)
-.\ask.ps1 --mcp-status --mcp-target opencode   # 등록 여부/경로 확인
-.\ask.ps1 --mcp-install --force                # 기존 등록 덮어쓰기 (기본값: cline)
-.\ask.ps1 --mcp-status --mcp-settings C:\path\to\custom.json   # 설정 파일 경로 지정
+# 질의응답/등록: 위 "## ask CLI 매뉴얼" 참조
 
 # 테스트
 python smoke_mcp.py                  # MCP 스모크 (자식 프로세스)
