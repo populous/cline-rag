@@ -8,6 +8,9 @@
 Cline 에 붙이는 **로컬 RAG 검색 MCP 서버**. v2.0.0부터 **LangChain + LangGraph** 기반으로
 동작합니다(임베딩 · Chroma 벡터 저장소 · 청킹 · 검색 오케스트레이션).
 
+**처음 사용하시나요?** **[GETTING_STARTED.md](GETTING_STARTED.md)** 에서
+설치부터 Cline 등록까지 순서대로 따라 하세요.
+
 전체 구축 과정은 **[RAG_STEP_BY_STEP.md](RAG_STEP_BY_STEP.md)**  보세요.
 변경 이력은 **[CHANGELOG.md](CHANGELOG.md)** 에 있습니다.
 
@@ -35,7 +38,8 @@ cline_rag/
 ├── requirements.txt           # 런타임 의존성 (LangChain/LangGraph/Chroma)
 ├── requirements-dev.txt       # 테스트 의존성 (pytest)
 ├── requirements-optional.txt  # 선택 확장 (pypdf)
-└── requirements.lock.txt      # pip freeze 기록
+├── requirements.lock.txt      # pip freeze 기록
+└── GETTING_STARTED.md         # 처음 사용자용 매뉴얼
 ```
 
 ## 빠른 시작

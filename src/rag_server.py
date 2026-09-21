@@ -1,12 +1,14 @@
-"""rag_server.py -- Cline 에 붙이는 RAG MCP 서버 (표준 라이브러리만 사용).
+"""rag_server.py -- Cline 에 붙이는 RAG MCP 서버.
 
-MCP 의 stdio 전송(줄 단위 JSON-RPC 2.0)을 직접 구현하므로
-`pip install` 없이 바로 동작한다.
+MCP 의 stdio 전송(줄 단위 JSON-RPC 2.0)은 표준 라이브러리로 직접 구현한다.
+검색/색인 로직은 rag_core.py 를 통해 LangChain + LangGraph + Chroma 를 쓴다
+(자세한 내용은 requirements.txt, README.md 참고).
 
 제공 도구(tools):
-  * search_docs(query, top_k, min_score) : 의미 기반 문서 검색
-  * list_indexed_sources()               : 색인된 파일 목록
-  * index_status()                       : 색인 현황(청크/파일/차원)
+  * search_docs(query, top_k, min_score, sources, mode) : 문서 검색
+  * list_indexed_sources()                              : 색인된 파일 목록
+  * index_status()                                      : 색인 현황
+  * reindex(paths, reset)                                : 재색인(쓰기 도구)
 
 주의: stdout 은 MCP 프로토콜 전용이다. 로그는 반드시 stderr 로 보낸다.
 """
