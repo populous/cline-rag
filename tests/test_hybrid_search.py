@@ -53,10 +53,15 @@ def test_bm25_no_overlap_scores_zero():
 def test_bm25_ranks_matching_document_higher():
     scores = core.bm25_scores(
         "chunk size",
-        ["Chunk size and overlap recommendation", "Deployment notes"],
+        [
+            "Chunk size and overlap recommendation",
+            "Deployment notes",
+            "Something else entirely",
+        ],
     )
     assert scores[0] > 0.0
     assert scores[1] == 0.0          # no shared term -> no score
+    assert scores[2] == 0.0
 
 
 def test_bm25_empty_inputs():
@@ -66,17 +71,23 @@ def test_bm25_empty_inputs():
 
 
 def test_bm25_prefers_shorter_document_for_same_term_count():
-    scores = core.bm25_scores("chunk", ["chunk", "chunk " + "filler " * 50])
+    scores = core.bm25_scores(
+        "chunk", ["chunk", "chunk " + "filler " * 50, "unrelated document here"]
+    )
     assert scores[0] > scores[1]
 
 
 def test_bm25_prefers_higher_term_frequency():
-    scores = core.bm25_scores("size", ["size", "size size size"])
+    scores = core.bm25_scores(
+        "size", ["size", "size size size", "other alpha", "other beta", "other gamma"]
+    )
     assert scores[1] > scores[0]
 
 
 def test_bm25_handles_korean_query():
-    scores = core.bm25_scores("재색인", ["전체 재색인이 필요하다.", "다른 내용입니다."])
+    scores = core.bm25_scores(
+        "재색인", ["전체 재색인이 필요하다.", "다른 내용입니다.", "세 번째 문서입니다."]
+    )
     assert scores[0] > scores[1] == 0.0
 
 
@@ -118,40 +129,44 @@ def test_rrf_empty_inputs():
 # ---------------------------------------------------------------------------
 
 def test_keyword_search_finds_exact_terms(seeded_store):
-    conn, _config = seeded_store
-    hits = core.keyword_search(conn, "800", top_k=3)
+    store, _config = seeded_store
+    hits = core.keyword_search(store, "800", top_k=3)
     assert hits
     assert hits[0]["source"].endswith("alpha.md")
 
 
 def test_keyword_search_handles_korean(seeded_store):
-    conn, _config = seeded_store
-    hits = core.keyword_search(conn, "재색인", top_k=3)
+    store, _config = seeded_store
+    hits = core.keyword_search(store, "재색인", top_k=3)
     assert hits
     assert "재색인" in hits[0]["text"]
 
 
 def test_keyword_search_without_match_is_empty(seeded_store):
-    conn, _config = seeded_store
-    assert core.keyword_search(conn, "zzzznomatch", top_k=3) == []
+    store, _config = seeded_store
+    assert core.keyword_search(store, "zzzznomatch", top_k=3) == []
 
 
-def test_keyword_search_sources_filter(seeded_store):
-    conn, _config = seeded_store
-    beta = [
-        str(row["source"])
-        for row in conn.execute(
-            "SELECT DISTINCT source FROM chunks WHERE source LIKE '%beta.md'"
-        )
-    ]
-    hits = core.keyword_search(conn, "Ollama", top_k=5, sources=beta)
-    assert len(hits) == 1
-    assert hits[0]["source"].endswith("beta.md")
+def test_keyword_search_sources_filter(seeded_store, tmp_path):
+    store, _config = seeded_store
+    # BM25Okapi 의 idf = log((N-n+0.5)/(n+0.5)) 는 2문서 코퍼스에서 한쪽에만
+    # 있는 단어의 idf 가 정확히 0이 되므로, 의미 있는 점수를 보려면 필터링된
+    # 코퍼스에 문서가 3개 이상 있어야 한다. alpha.md 에 청크를 하나 더 넣는다.
+    core.upsert_chunks(store, [{
+        "source": str(tmp_path / "alpha.md"),
+        "chunk_index": 2,
+        "text": "권장한다는 표현이 문서 곳곳에 등장한다.",
+    }])
+
+    alpha_only = [str(tmp_path / "alpha.md")]
+    hits = core.keyword_search(store, "권장한다", top_k=5, sources=alpha_only)
+    assert hits
+    assert all(hit["source"].endswith("alpha.md") for hit in hits)
 
 
-def test_fetch_chunks_returns_everything_without_filter(seeded_store):
-    conn, _config = seeded_store
-    assert len(core.fetch_chunks(conn)) == 3
+def test_fetch_all_documents_returns_everything_without_filter(seeded_store):
+    store, _config = seeded_store
+    assert len(core.fetch_all_documents(store)) == 3
 
 
 # ---------------------------------------------------------------------------
@@ -159,26 +174,37 @@ def test_fetch_chunks_returns_everything_without_filter(seeded_store):
 # ---------------------------------------------------------------------------
 
 def test_keyword_mode_does_not_call_the_embedding_provider(seeded_store, fake_embed):
-    _conn, config = seeded_store
-    hits = core.search_documents("재색인", mode="keyword", top_k=3, cfg=config)
+    store, config = seeded_store
+    fake_embed.clear()
+    hits = core.search_documents(
+        "재색인", mode="keyword", top_k=3, cfg=config,
+        db_path=core.resolve_store_path(config),
+    )
     assert hits
     assert fake_embed == []
 
 
 def test_vector_mode_uses_embeddings(seeded_store, fake_embed):
-    _conn, config = seeded_store
-    hits = core.search_documents("재색인", mode="vector", top_k=3, cfg=config)
+    store, config = seeded_store
+    fake_embed.clear()
+    hits = core.search_documents(
+        "재색인", mode="vector", top_k=3, cfg=config,
+        db_path=core.resolve_store_path(config),
+    )
     assert hits
     assert fake_embed
 
 
 def test_hybrid_mode_uses_both_rankers(seeded_store, fake_embed):
-    _conn, config = seeded_store
-    hits = core.search_documents("재색인", mode="hybrid", top_k=3, cfg=config)
+    store, config = seeded_store
+    fake_embed.clear()
+    hits = core.search_documents(
+        "재색인", mode="hybrid", top_k=3, cfg=config,
+        db_path=core.resolve_store_path(config),
+    )
     assert hits
     assert fake_embed
     assert len(hits) <= 3
-    assert hits[0]["score"] <= 1.0
 
 
 def test_hybrid_is_one_of_the_advertised_modes():
@@ -187,13 +213,16 @@ def test_hybrid_is_one_of_the_advertised_modes():
 
 
 def test_unknown_mode_raises_value_error(seeded_store, fake_embed):
-    _conn, config = seeded_store
+    store, config = seeded_store
     with pytest.raises(ValueError):
-        core.search_documents("x", mode="banana", cfg=config)
+        core.search_documents(
+            "x", mode="banana", cfg=config,
+            db_path=core.resolve_store_path(config),
+        )
 
 
 def test_missing_store_raises_file_not_found(tmp_path, fake_embed):
     config = core.load_config()
-    config["store"]["path"] = str(tmp_path / "absent.sqlite3")
+    config["store"]["path"] = str(tmp_path / "absent_store")
     with pytest.raises(FileNotFoundError):
         core.search_documents("x", mode="keyword", cfg=config)

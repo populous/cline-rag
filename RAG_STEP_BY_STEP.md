@@ -13,7 +13,7 @@ Cline 에 **로컬 RAG(검색 증강 생성)** 를 잇는 전 과정입니다.
 | Cline 의 기본 코드 탐색 | `read_file` / `grep` / `list_files` **도구 기반 탐색** (벡터 아님) |
 | 진짜 벡터 RAG 를 붙이는 방법 | **MCP 서버**로 검색기를 만들어 등록한다 |
 | 정적 컨텍스트 주입 | `.clinerules/` 파일 (검색이 아니라 항상 포함되는 규칙) |
-| 이 프로젝트의 구현 | **표준 라이브러리만** → `pip install` 불필요, Python 3.14 동작 확인 |
+| 이 프로젝트의 구현 | **LangChain + LangGraph** (v2.0.0부터) → Chroma 벡터 저장소, `pip install` 필요 |
 
 > 핵심: Cline 은 "RAG 를 직접 하는 에이전트"가 아니라 **RAG 도구를 호출하는 에이전트**입니다.
 > 그래서 검색기를 MCP 서버로 노출하기만 하면 됩니다.
@@ -21,10 +21,10 @@ Cline 에 **로컬 RAG(검색 증강 생성)** 를 잇는 전 과정입니다.
 ### 전체 구조
 
 ```
-[원본 문서] -> src/ingest.py -> (임베딩) -> rag_store.sqlite3 (벡터 저장소)
-                                                 ^
-                                                 | 검색
-[Cline] --MCP(stdio)--> src/rag_server.py -------+
+[원본 문서] -> src/ingest.py -> (LangChain 임베딩) -> rag_store_chroma/ (Chroma 벡터 저장소)
+                                                            ^
+                                                            | LangGraph 검색 그래프
+[Cline] --MCP(stdio)--> src/rag_server.py ------------------+
    |
    +-- 필요할 때 search_docs 도구를 스스로 호출
 ```
@@ -34,12 +34,13 @@ Cline 에 **로컬 RAG(검색 증강 생성)** 를 잇는 전 과정입니다.
 ## 1. 준비물 확인
 
 ```powershell
-python --version          # 3.10+ (검증 환경: 3.14.7)
+python --version          # 3.10+ (검증 환경: 3.13.5)
 ollama --version          # 로컬 임베딩을 쓸 경우
 cmake --version           # 테스트 팩을 쓸 경우 (검증 환경: 4.4.3)
 ```
 
-런타임 의존성은 **없습니다**(표준 라이브러리만). 테스트에만 `pytest` 가 필요합니다.
+런타임 의존성은 LangChain/LangGraph/Chroma 등입니다(`requirements.txt` 참고).
+테스트에는 `pytest` 가 필요합니다.
 
 ---
 
@@ -71,7 +72,7 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1 -SkipCmake
 python -m venv .venv                          # 가상환경 생성
 .\.venv\Scripts\Activate.ps1                  # 활성화
 python -m pip install --upgrade pip           # pip 최신화
-python -m pip install -r requirements.txt     # 런타임 의존성 (없음)
+python -m pip install -r requirements.txt     # 런타임 의존성 (LangChain/LangGraph/Chroma)
 python -m pip install -r requirements-dev.txt # pytest
 
 python --version                              # .venv 의 파이썬인지 확인
@@ -105,12 +106,12 @@ cline_rag/
 ├── setup.ps1                  # 원클릭 설정
 ├── requirements.txt           # 런타임 (필수 서드파티 없음)
 ├── requirements-dev.txt       # 테스트 (pytest)
-├── requirements-optional.txt  # 선택 확장 (numpy, pypdf)
+├── requirements-optional.txt  # 선택 확장 (pypdf)
 ├── clinerules-template.md     # Cline 규칙 템플릿
-└── rag_store.sqlite3          # 색인 결과 (git 제외)
+└── rag_store_chroma/          # 색인 결과, Chroma 저장소 (git 제외)
 ```
 
-**경로 규칙**: 소스는 `src/`, 데이터(`config.json`, `rag_store.sqlite3`)는 프로젝트 루트에
+**경로 규칙**: 소스는 `src/`, 데이터(`config.json`, `rag_store_chroma/`)는 프로젝트 루트에
 둡니다. `rag_core.PROJECT_DIR` 이 기준을 결정하므로 실행 위치와 무관하게 동작합니다.
 
 ### 2-4. 의존성 기록
@@ -194,7 +195,7 @@ python src\ingest.py --list          # 색인된 파일 목록
 
 ```
 임베딩 제공자 : ollama
-저장소        : C:\...\cline_rag\rag_store.sqlite3
+저장소        : C:\...\cline_rag\rag_store_chroma
 대상 파일     : 1개
 청크 8개 임베딩 중...
   진행 8/8
@@ -413,7 +414,7 @@ python smoke_mcp.py
 
 # 2) 임베딩만 따로 확인
 $env:PYTHONPATH = "src"
-python -c "import rag_core as c; print(len(c.embed_texts(['test'], c.load_config())[0]))"
+python -c "import rag_core as c; cfg = c.load_config(); e = c.build_embeddings(cfg); print(len(e.embed_query('test')))"
 
 # 3) 색인 현황
 python src\ingest.py --stats
@@ -464,6 +465,7 @@ python "C:/path/to/cline_rag/src/ingest.py" >/dev/null 2>&1 &
 build/
 build-*/
 rag_store.sqlite3
+rag_store_chroma/
 __pycache__/
 ```
 
@@ -519,10 +521,10 @@ git init -b main
 git config user.name  "populous"
 git config user.email "populous@empas.com"
 
-# 4) 스테이징 전 확인 — .venv/build/rag_store.sqlite3 가 보이면 중단
+# 4) 스테이징 전 확인 — .venv/build/rag_store_chroma 가 보이면 중단
 git add -A
 git status --short
-git check-ignore -v .venv build rag_store.sqlite3
+git check-ignore -v .venv build rag_store_chroma
 
 # 5) 초기 커밋
 git commit -m "feat: add local RAG MCP server for Cline"

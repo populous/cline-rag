@@ -32,7 +32,7 @@ import rag_core as core  # noqa: E402  (경로 설정 후 임포트)
 PROJECT_DIR = core.PROJECT_DIR
 
 SERVER_NAME = "cline-rag"
-SERVER_VERSION = "1.1.0"
+SERVER_VERSION = "2.0.0"
 DEFAULT_PROTOCOL = "2025-06-18"
 SUPPORTED_PROTOCOLS = {"2024-11-05", "2025-03-26", "2025-06-18"}
 
@@ -205,15 +205,17 @@ def tool_search_docs(args: dict) -> dict:
     return text_content("\n".join(lines).rstrip())
 
 
+def store_exists(db_path: Path) -> bool:
+    """Chroma persist_directory 가 실제로 색인된 상태인지 확인한다."""
+    return db_path.is_dir() and any(db_path.iterdir())
+
+
 def tool_list_indexed_sources(_args: dict) -> dict:
-    _cfg, db_path = load_config_and_store()
-    if not db_path.is_file():
+    cfg, db_path = load_config_and_store()
+    if not store_exists(db_path):
         return text_content("색인 저장소가 아직 없습니다. ingest.py 를 먼저 실행하세요.")
-    conn = core.connect(db_path)
-    try:
-        items = core.list_sources(conn)
-    finally:
-        conn.close()
+    store = core.connect(db_path, cfg)
+    items = core.list_sources(store)
     if not items:
         return text_content("색인된 파일이 없습니다.")
     lines = [f"색인된 파일 {len(items)}개", ""]
@@ -222,14 +224,11 @@ def tool_list_indexed_sources(_args: dict) -> dict:
 
 
 def tool_index_status(_args: dict) -> dict:
-    _cfg, db_path = load_config_and_store()
-    if not db_path.is_file():
+    cfg, db_path = load_config_and_store()
+    if not store_exists(db_path):
         return text_content("색인 저장소가 아직 없습니다. ingest.py 를 먼저 실행하세요.")
-    conn = core.connect(db_path)
-    try:
-        stats = core.store_stats(conn)
-    finally:
-        conn.close()
+    store = core.connect(db_path, cfg)
+    stats = core.store_stats(store)
     payload = {"store": str(db_path), **stats}
     return text_content(json.dumps(payload, ensure_ascii=False, indent=2))
 

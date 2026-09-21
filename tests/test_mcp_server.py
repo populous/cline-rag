@@ -40,34 +40,41 @@ def extract_text(response: dict) -> str:
 
 @pytest.fixture
 def project_to_tmp(tmp_path, monkeypatch):
-    """rag_server.PROJECT_DIR  tmp 로 돌려 저장소를 리한다."""
+    """rag_server.PROJECT_DIR 를 tmp 로 돌려 저장소를 격리한다."""
     monkeypatch.setattr(rag_server, "PROJECT_DIR", tmp_path)
-    monkeypatch.setattr(core, "embed_texts", lambda texts, cfg=None:
-                        [fake_vector(text) for text in texts])
+    monkeypatch.setattr(core, "build_embeddings", lambda cfg: _FakeEmbeddings())
     return tmp_path
+
+
+class _FakeEmbeddings:
+    """외부 호출 없이 결정적 벡터를 만드는 LangChain Embeddings 구현."""
+
+    def embed_documents(self, texts):
+        return [fake_vector(text) for text in texts]
+
+    def embed_query(self, text):
+        return fake_vector(text)
 
 
 @pytest.fixture
 def tmp_store(project_to_tmp):
-    """tmp 프로젝트에 샘플 저장소를 만든다."""
-    db_path = project_to_tmp / "rag_store.sqlite3"
+    """tmp 프로젝트에 샘플 저장소(Chroma)를 만든다.
+
+    BM25Okapi 의 idf = log((N-n+0.5)/(n+0.5)) 는 2문서 코퍼스에서 한쪽에만
+    있는 단어의 idf 가 정확히 0이 되므로, 키워드 검색 테스트가 의미 있는
+    점수를 보게 하려면 문서가 3개 이상 있어야 한다.
+    """
+    db_path = project_to_tmp / "rag_store_chroma"
     rows = [
         {"source": "guide.md", "chunk_index": 0,
          "text": "청크 크기는 800자, 겹침은 120자를 권장한다."},
         {"source": "ops.md", "chunk_index": 0,
          "text": "임베딩 모델을 바꾸면 전체 재색인이 필요하다."},
+        {"source": "notes.md", "chunk_index": 0,
+         "text": "이 문서는 검색어와 무관한 배경 설명을 담고 있다."},
     ]
-    conn = core.connect(db_path)
-    conn.executemany(
-        "INSERT INTO chunks(source, chunk_index, text, embedding, dim) VALUES(?,?,?,?,?)",
-        [
-            (row["source"], row["chunk_index"], row["text"],
-             json.dumps(fake_vector(row["text"])), len(fake_vector(row["text"])))
-            for row in rows
-        ],
-    )
-    conn.commit()
-    conn.close()
+    store = core.connect(db_path)
+    core.upsert_chunks(store, rows)
     return db_path
 
 
@@ -161,8 +168,8 @@ def test_index_status_without_store_explains_how_to_index(mcp_stdin, project_to_
 def test_index_status_reports_stats(mcp_stdin, tmp_store):
     responses = run_server(mcp_stdin, call_tool("index_status"))
     payload = json.loads(extract_text(responses[0]))
-    assert payload["chunks"] == 2
-    assert payload["sources"] == 2
+    assert payload["chunks"] == 3
+    assert payload["sources"] == 3
 
 
 def test_list_indexed_sources_lists_files(mcp_stdin, tmp_store):

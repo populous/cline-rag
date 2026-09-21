@@ -1,7 +1,8 @@
 """conftest.py -- pytest 공용 픽스처.
 
 핵심 원칙: 테스트는 **외부 서비스에 의존하지 않는다**.
-Ollama/OpenAI 를 부르지 않도록 임베딩을 결정적(deterministic) 가짜 함수로 바꾼다.
+Ollama/OpenAI 를 부르지 않도록 임베딩을 결정적(deterministic) 가짜
+``langchain_core.embeddings.Embeddings`` 구현으로 바꾼다.
 덕분에 CI 나 다른 PC 에서도 그대로 통과한다.
 """
 
@@ -12,6 +13,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from langchain_core.embeddings import Embeddings
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 SRC_DIR = PROJECT_DIR / "src"
@@ -41,33 +43,41 @@ def fake_vector(text: str) -> list[float]:
     return buckets
 
 
-@pytest.fixture
-def fake_embed(monkeypatch):
-    """core.embed_texts 를 가짜 임베딩으로 교체한다."""
-    calls: list[list[str]] = []
+class FakeEmbeddings(Embeddings):
+    """외부 호출 없이 결정적 벡터를 만드는 LangChain Embeddings 구현."""
 
-    def _embed(texts, cfg=None):
-        calls.append(list(texts))
+    def __init__(self) -> None:
+        self.calls: list[list[str]] = []
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        self.calls.append(list(texts))
         return [fake_vector(text) for text in texts]
 
-    monkeypatch.setattr(core, "embed_texts", _embed)
-    monkeypatch.setattr(core, "embed_batches", lambda texts, cfg=None, batch_size=16,
-                        progress=None: [fake_vector(t) for t in texts])
-    return calls
+    def embed_query(self, text: str) -> list[float]:
+        self.calls.append([text])
+        return fake_vector(text)
+
+
+@pytest.fixture
+def fake_embed(monkeypatch):
+    """core.build_embeddings 가 결정적 가짜 임베딩을 돌려주게 한다."""
+    embeddings = FakeEmbeddings()
+    monkeypatch.setattr(core, "build_embeddings", lambda cfg: embeddings)
+    return embeddings.calls
 
 
 @pytest.fixture
 def temp_config(tmp_path) -> dict:
     """저장소가 tmp_path 를 가리키는 설정을 만든다."""
     cfg = core.load_config()
-    cfg["store"]["path"] = str(tmp_path / "test_store.sqlite3")
+    cfg["store"]["path"] = str(tmp_path / "test_store_chroma")
     return cfg
 
 
 @pytest.fixture
-def seeded_store(tmp_path):
-    """샘플 청크가 들어 있는 저장소를 만들어 (conn, cfg) 를 돌려준다."""
-    db_path = tmp_path / "test_store.sqlite3"
+def seeded_store(tmp_path, fake_embed):
+    """샘플 청크가 들어 있는 저장소를 만들어 (store, cfg) 를 돌려준다."""
+    db_path = tmp_path / "test_store_chroma"
     cfg = core.load_config()
     cfg["store"]["path"] = str(db_path)
 
@@ -88,12 +98,10 @@ def seeded_store(tmp_path):
             "text": "Ollama 는 로컬에서 임베딩을 계산한다.",
         },
     ]
-    vectors = [fake_vector(row["text"]) for row in rows]
 
-    conn = core.connect(db_path)
-    core.upsert_chunks(conn, rows, vectors, cfg)
-    yield conn, cfg
-    conn.close()
+    store = core.connect(db_path, cfg)
+    core.upsert_chunks(store, rows, cfg=cfg)
+    yield store, cfg
 
 
 @pytest.fixture

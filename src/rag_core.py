@@ -1,9 +1,13 @@
-"""rag_core.py -- 의존성 없는(zero-dependency) RAG 코어.
+"""rag_core.py -- LangChain + LangGraph 기반 RAG 코어.
 
-표준 라이브러리만 사용한다:
-  * 임베딩  : urllib 로 Ollama 또는 OpenAI 임베딩 API 호출
-  * 저장소  : sqlite3 (벡터는 JSON 텍스트로 저장)
-  * 유사도  : 순수 파이썬 코사인 유사도
+v2.0.0부터 다음 컴포넌트를 사용한다:
+  * 임베딩       : langchain_ollama.OllamaEmbeddings / langchain_openai.OpenAIEmbeddings
+  * 벡터 저장소  : langchain_chroma.Chroma (로컬 디스크에 영속, 별도 서버 불필요)
+  * 청킹         : langchain_text_splitters.RecursiveCharacterTextSplitter
+  * 키워드 검색  : langchain_community.retrievers.BM25Retriever (+ rank_bm25),
+                   CJK(한중일) 문자는 자체 bigram 토크나이저로 전처리한다
+  * 검색 오케스트레이션 : langgraph.graph.StateGraph
+                   (vector / keyword / hybrid 모드를 노드/조건부 엣지로 분기)
 
 이 파일은 ingest.py(색인기)와 rag_server.py(MCP 서버)가 공유한다.
 """
@@ -11,12 +15,16 @@
 from __future__ import annotations
 
 import json
-import math
 import os
-import sqlite3
-import urllib.error
-import urllib.request
 from pathlib import Path
+from typing import TypedDict
+
+from langchain_community.retrievers import BM25Retriever
+from langchain_core.documents import Document
+from langchain_core.embeddings import Embeddings
+from langchain_chroma import Chroma
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langgraph.graph import END, START, StateGraph
 
 # --------------------------------------------------------------------------
 # 기본 설정
@@ -36,8 +44,8 @@ DEFAULT_CONFIG = {
         },
     },
     "store": {
-        "path": "rag_store.sqlite3",
-        "dim": 768,
+        "path": "rag_store_chroma",   # Chroma persist_directory (디렉터리)
+        "collection": "cline_rag",
     },
     "chunking": {
         "size": 800,
@@ -83,7 +91,10 @@ def load_config(path: str | os.PathLike | None = None) -> dict:
 
 
 def resolve_store_path(cfg: dict, base_dir: str | os.PathLike | None = None) -> Path:
-    """저장소 경로를 절대 경로로 만든다(상대 경로는 프로젝트 루트 기준)."""
+    """저장소(Chroma persist_directory) 경로를 절대 경로로 만든다.
+
+    상대 경로는 프로젝트 루트 기준으로 해석한다.
+    """
     raw = Path(cfg["store"]["path"])
     if raw.is_absolute():
         return raw
@@ -95,87 +106,55 @@ def resolve_store_path(cfg: dict, base_dir: str | os.PathLike | None = None) -> 
 # 임베딩
 # --------------------------------------------------------------------------
 
-def _post_json(url: str, payload: dict, headers: dict | None = None,
-               timeout: int = 120) -> dict:
-    body = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(url, data=body, method="POST")
-    req.add_header("Content-Type", "application/json")
-    for key, value in (headers or {}).items():
-        req.add_header(key, value)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", "replace")[:500]
-        raise RuntimeError(f"HTTP {exc.code} from {url}: {detail}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"연결 실패 {url}: {exc.reason}") from exc
-
-
-def embed_ollama(texts: list[str], cfg: dict) -> list[list[float]]:
-    """Ollama /api/embed (신형) 후 /api/embeddings (구형) 로 폴백."""
-    conf = cfg["embedding"]["ollama"]
-    base = conf["apiBase"].rstrip("/")
-    model = conf["model"]
-
-    try:
-        data = _post_json(f"{base}/api/embed", {"model": model, "input": texts})
-        vectors = data.get("embeddings")
-        if vectors:
-            return [list(map(float, vec)) for vec in vectors]
-    except RuntimeError:
-        pass  # 구형 엔드포인트로 재시도
-
-    out: list[list[float]] = []
-    for text in texts:
-        data = _post_json(f"{base}/api/embeddings", {"model": model, "prompt": text})
-        vector = data.get("embedding")
-        if not vector:
-            raise RuntimeError(f"Ollama 가 임베딩을 반환하지 않았습니다: {data}")
-        out.append(list(map(float, vector)))
-    return out
-
-
-def embed_openai(texts: list[str], cfg: dict) -> list[list[float]]:
-    conf = cfg["embedding"]["openai"]
-    api_key = os.environ.get(conf.get("apiKeyEnv", "OPENAI_API_KEY"), "")
-    if not api_key:
-        raise RuntimeError(
-            f"환경 변수 {conf.get('apiKeyEnv', 'OPENAI_API_KEY')} 가 설정되지 않았습니다."
-        )
-    base = conf["apiBase"].rstrip("/")
-    data = _post_json(
-        f"{base}/embeddings",
-        {"model": conf["model"], "input": texts},
-        headers={"Authorization": f"Bearer {api_key}"},
-    )
-    rows = sorted(data["data"], key=lambda row: row.get("index", 0))
-    return [list(map(float, row["embedding"])) for row in rows]
-
-
-def embed_texts(texts: list[str], cfg: dict) -> list[list[float]]:
-    """설정된 제공자로 임베딩을 계산한다."""
-    if not texts:
-        return []
+def build_embeddings(cfg: dict) -> Embeddings:
+    """설정된 제공자에 맞는 LangChain Embeddings 인스턴스를 만든다."""
     provider = str(cfg["embedding"]["provider"]).lower()
     if provider == "ollama":
-        return embed_ollama(texts, cfg)
+        from langchain_ollama import OllamaEmbeddings
+
+        conf = cfg["embedding"]["ollama"]
+        return OllamaEmbeddings(model=conf["model"], base_url=conf["apiBase"])
     if provider == "openai":
-        return embed_openai(texts, cfg)
+        from langchain_openai import OpenAIEmbeddings
+
+        conf = cfg["embedding"]["openai"]
+        api_key = os.environ.get(conf.get("apiKeyEnv", "OPENAI_API_KEY"), "")
+        if not api_key:
+            raise RuntimeError(
+                f"환경 변수 {conf.get('apiKeyEnv', 'OPENAI_API_KEY')} 가 설정되지 않았습니다."
+            )
+        return OpenAIEmbeddings(
+            model=conf["model"], api_key=api_key, base_url=conf["apiBase"]
+        )
     raise ValueError(f"알 수 없는 임베딩 제공자: {provider}")
 
 
-def embed_batches(texts: list[str], cfg: dict, batch_size: int = 16,
-                  progress=None) -> list[list[float]]:
-    """임베딩을 배치 단위로 계산한다(대량 문서용)."""
-    vectors: list[list[float]] = []
-    total = len(texts)
-    for start in range(0, total, batch_size):
-        batch = texts[start:start + batch_size]
-        vectors.extend(embed_texts(batch, cfg))
-        if progress:
-            progress(min(start + batch_size, total), total)
-    return vectors
+# --------------------------------------------------------------------------
+# 벡터 저장소 (Chroma)
+# --------------------------------------------------------------------------
+
+def build_vectorstore(cfg: dict, embeddings: Embeddings,
+                      db_path: str | os.PathLike | None = None) -> Chroma:
+    """설정을 바탕으로 로컬 영속 Chroma 벡터 저장소를 연다(없으면 생성)."""
+    path = Path(db_path) if db_path else resolve_store_path(cfg)
+    path.mkdir(parents=True, exist_ok=True)
+    return Chroma(
+        collection_name=cfg["store"].get("collection", "cline_rag"),
+        embedding_function=embeddings,
+        persist_directory=str(path),
+        collection_configuration={"hnsw": {"space": "cosine"}},
+    )
+
+
+def connect(db_path: str | os.PathLike, cfg: dict | None = None,
+           embeddings: Embeddings | None = None) -> Chroma:
+    """저장소를 연다. embeddings 를 주지 않으면 cfg 기준으로 새로 만든다.
+
+    과거 SQLite 버전과의 이름 호환을 위해 ``connect()`` 이름을 유지한다.
+    """
+    cfg = cfg or load_config()
+    embeddings = embeddings or build_embeddings(cfg)
+    return build_vectorstore(cfg, embeddings, db_path)
 
 
 # --------------------------------------------------------------------------
@@ -206,199 +185,169 @@ def iter_document_files(targets: list[str | os.PathLike]) -> list[Path]:
     return found
 
 
+def build_splitter(cfg: dict | None = None) -> RecursiveCharacterTextSplitter:
+    """설정된 크기/겹침으로 RecursiveCharacterTextSplitter 를 만든다."""
+    cfg = cfg or load_config()
+    chunk_cfg = cfg["chunking"]
+    return RecursiveCharacterTextSplitter(
+        chunk_size=chunk_cfg["size"],
+        chunk_overlap=chunk_cfg["overlap"],
+        separators=["\n\n", "\n", ". ", "다. ", " ", ""],
+    )
+
+
 def chunk_text(text: str, size: int = 800, overlap: int = 120) -> list[str]:
-    """문단 경계를 존중하며 겹침(overlap)을 가진 청크로 나눈다."""
+    """텍스트를 겹침(overlap)을 가진 청크로 나눈다(RecursiveCharacterTextSplitter 기반).
+
+    과거 SQLite 버전과의 호환을 위해 유지하는 얇은 wrapper 다.
+    """
     if size <= 0:
         raise ValueError("chunk size 는 1 이상이어야 합니다.")
-    overlap = max(0, min(overlap, size - 1))
     cleaned = text.replace("\r\n", "\n").strip()
     if not cleaned:
         return []
+    overlap = max(0, min(overlap, size - 1))
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=size, chunk_overlap=overlap,
+        separators=["\n\n", "\n", ". ", "다. ", " ", ""],
+    )
+    return [chunk for chunk in splitter.split_text(cleaned) if chunk.strip()]
 
-    chunks: list[str] = []
-    start = 0
-    length = len(cleaned)
-    while start < length:
-        end = min(start + size, length)
-        if end < length:
-            window_start = start + max(size // 2, 1)
-            best = -1
-            for marker in ("\n\n", "\n", ". ", "다. "):
-                pos = cleaned.rfind(marker, window_start, end)
-                if pos > best:
-                    best = pos + len(marker)
-            if best > start:
-                end = best
-        piece = cleaned[start:end].strip()
-        if piece:
-            chunks.append(piece)
-        if end >= length:
-            break
-        start = max(end - overlap, start + 1)
-    return chunks
+
+def build_documents(files: list[Path], cfg: dict | None = None) -> list[Document]:
+    """파일들을 청크 단위 LangChain ``Document`` 목록으로 변환한다.
+
+    metadata 는 ``source``(파일 경로 문자열)와 ``chunk_index`` 를 담는다.
+    """
+    cfg = cfg or load_config()
+    splitter = build_splitter(cfg)
+    docs: list[Document] = []
+    for file_path in files:
+        text = read_text_file(file_path)
+        cleaned = text.replace("\r\n", "\n").strip()
+        if not cleaned:
+            continue
+        for index, piece in enumerate(splitter.split_text(cleaned)):
+            piece = piece.strip()
+            if not piece:
+                continue
+            docs.append(Document(
+                page_content=piece,
+                metadata={"source": str(file_path), "chunk_index": index},
+            ))
+    return docs
 
 
 def build_chunk_rows(files: list[Path], cfg: dict | None = None) -> list[dict]:
-    """파일들을 (source, chunk_index, text) 레코드 목록으로 변환한다."""
-    cfg = cfg or load_config()
-    chunk_cfg = cfg["chunking"]
-    rows: list[dict] = []
-    for file_path in files:
-        text = read_text_file(file_path)
-        for index, piece in enumerate(
-            chunk_text(text, chunk_cfg["size"], chunk_cfg["overlap"])
-        ):
-            rows.append({
-                "source": str(file_path),
-                "chunk_index": index,
-                "text": piece,
-            })
-    return rows
+    """파일들을 (source, chunk_index, text) 레코드 목록으로 변환한다.
 
-
-# --------------------------------------------------------------------------
-# SQLite 벡터 저장소
-# --------------------------------------------------------------------------
-
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS chunks (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    source      TEXT    NOT NULL,
-    chunk_index INTEGER NOT NULL,
-    text        TEXT    NOT NULL,
-    embedding   TEXT    NOT NULL,
-    dim         INTEGER NOT NULL,
-    created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(source, chunk_index)
-);
-CREATE INDEX IF NOT EXISTS idx_chunks_source ON chunks(source);
-
-CREATE TABLE IF NOT EXISTS meta (
-    key   TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-"""
-
-
-def connect(db_path: str | os.PathLike) -> sqlite3.Connection:
-    """저장소를 열고 스키마를 준비한다."""
-    path = Path(db_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path))
-    conn.row_factory = sqlite3.Row
-    conn.executescript(SCHEMA)
-    conn.commit()
-    return conn
-
-
-def set_meta(conn: sqlite3.Connection, key: str, value) -> None:
-    conn.execute(
-        "INSERT INTO meta(key, value) VALUES(?, ?) "
-        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-        (key, json.dumps(value, ensure_ascii=False)),
-    )
-    conn.commit()
-
-
-def get_meta(conn: sqlite3.Connection, key: str, default=None):
-    row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
-    return json.loads(row["value"]) if row else default
-
-
-def reset_store(conn: sqlite3.Connection) -> None:
-    conn.execute("DELETE FROM chunks")
-    conn.commit()
-
-
-def delete_source(conn: sqlite3.Connection, source: str) -> int:
-    cur = conn.execute("DELETE FROM chunks WHERE source = ?", (source,))
-    conn.commit()
-    return cur.rowcount
-
-
-def upsert_chunks(conn: sqlite3.Connection, rows: list[dict],
-                  vectors: list[list[float]], cfg: dict | None = None) -> int:
-    """(source, chunk_index) 기준으로 청크와 벡터를 저장/갱신한다."""
-    if len(rows) != len(vectors):
-        raise ValueError("청크 수와 벡터 수가 다릅니다.")
-    cfg = cfg or load_config()
-    payload = [
-        (
-            row["source"],
-            row["chunk_index"],
-            row["text"],
-            json.dumps([round(float(x), 6) for x in vector]),
-            len(vector),
-        )
-        for row, vector in zip(rows, vectors)
+    과거 SQLite 버전과의 호환을 위해 유지하는 얇은 wrapper 다.
+    """
+    return [
+        {
+            "source": doc.metadata["source"],
+            "chunk_index": doc.metadata["chunk_index"],
+            "text": doc.page_content,
+        }
+        for doc in build_documents(files, cfg)
     ]
-    conn.executemany(
-        """
-        INSERT INTO chunks(source, chunk_index, text, embedding, dim)
-        VALUES(?, ?, ?, ?, ?)
-        ON CONFLICT(source, chunk_index) DO UPDATE SET
-            text = excluded.text,
-            embedding = excluded.embedding,
-            dim = excluded.dim,
-            created_at = CURRENT_TIMESTAMP
-        """,
-        payload,
-    )
-    conn.commit()
-    if vectors:
-        set_meta(conn, "embedding_dim", len(vectors[0]))
-        set_meta(conn, "embedding_provider", cfg["embedding"]["provider"])
-    return len(payload)
 
 
-def store_stats(conn: sqlite3.Connection) -> dict:
-    row = conn.execute(
-        "SELECT COUNT(*) AS chunks, COUNT(DISTINCT source) AS sources FROM chunks"
-    ).fetchone()
+
+# --------------------------------------------------------------------------
+# 저장소 CRUD (Chroma 기반)
+# --------------------------------------------------------------------------
+
+def _chunk_id(source: str, chunk_index: int) -> str:
+    """(source, chunk_index) 를 Chroma 문서 ID로 직렬화한다."""
+    return f"{source}::{chunk_index}"
+
+
+def reset_store(store: Chroma) -> None:
+    """저장소의 모든 문서를 지운다(컬렉션을 재생성)."""
+    store.reset_collection()
+
+
+def delete_source(store: Chroma, source: str) -> int:
+    """특정 파일(source)에 속한 모든 청크를 지우고 삭제된 개수를 돌려준다."""
+    existing = store.get(where={"source": source})
+    ids = existing.get("ids") or []
+    if ids:
+        store.delete(ids=ids)
+    return len(ids)
+
+
+def upsert_documents(store: Chroma, docs: list[Document]) -> int:
+    """(source, chunk_index) 기준으로 문서를 저장/갱신한다."""
+    if not docs:
+        return 0
+    ids = [_chunk_id(doc.metadata["source"], doc.metadata["chunk_index"]) for doc in docs]
+    # Chroma.add_documents 는 동일 id 가 있으면 upsert(덮어쓰기) 한다.
+    store.add_documents(documents=docs, ids=ids)
+    return len(docs)
+
+
+def upsert_chunks(store: Chroma, rows: list[dict],
+                  vectors: list[list[float]] | None = None,
+                  cfg: dict | None = None) -> int:
+    """(source, chunk_index, text) 레코드를 저장한다.
+
+    과거 SQLite 버전과의 호환을 위해 유지하는 얇은 wrapper 다. ``vectors`` 는
+    무시되며(Chroma 가 embedding_function 으로 직접 계산한다) 길이 검증만 한다.
+    """
+    if vectors is not None and rows and len(vectors) != len(rows):
+        raise ValueError("rows 와 vectors 의 길이가 일치해야 합니다.")
+    docs = [
+        Document(
+            page_content=row["text"],
+            metadata={"source": row["source"], "chunk_index": row["chunk_index"]},
+        )
+        for row in rows
+    ]
+    return upsert_documents(store, docs)
+
+
+def fetch_all_documents(store: Chroma, sources: list[str] | None = None) -> list[Document]:
+    """저장소의 모든 문서를 (선택적으로 source 로 필터링해) 돌려준다."""
+    where = {"source": {"$in": sources}} if sources else None
+    result = store.get(where=where, include=["documents", "metadatas"])
+    docs: list[Document] = []
+    for doc_id, text, meta in zip(
+        result.get("ids") or [], result.get("documents") or [], result.get("metadatas") or []
+    ):
+        docs.append(Document(page_content=text, metadata=meta or {}, id=doc_id))
+    return docs
+
+
+def store_stats(store: Chroma) -> dict:
+    """저장소 현황(총 청크 수, 총 파일 수, 임베딩 제공자)을 돌려준다."""
+    result = store.get(include=["metadatas"])
+    metadatas = result.get("metadatas") or []
+    sources = {meta.get("source") for meta in metadatas if meta}
+    provider = None
+    embeddings = getattr(store, "_embedding_function", None)
+    if embeddings is not None:
+        provider = type(embeddings).__name__
     return {
-        "chunks": row["chunks"],
-        "sources": row["sources"],
-        "embedding_dim": get_meta(conn, "embedding_dim"),
-        "embedding_provider": get_meta(conn, "embedding_provider"),
+        "chunks": len(metadatas),
+        "sources": len(sources),
+        "embedding_provider": provider,
     }
 
 
-def list_sources(conn: sqlite3.Connection) -> list[dict]:
-    rows = conn.execute(
-        "SELECT source, COUNT(*) AS chunks FROM chunks "
-        "GROUP BY source ORDER BY source"
-    ).fetchall()
-    return [{"source": r["source"], "chunks": r["chunks"]} for r in rows]
+def list_sources(store: Chroma) -> list[dict]:
+    """색인된 파일 목록과 파일별 청크 수를 돌려준다."""
+    result = store.get(include=["metadatas"])
+    counts: dict[str, int] = {}
+    for meta in result.get("metadatas") or []:
+        source = (meta or {}).get("source")
+        if source:
+            counts[source] = counts.get(source, 0) + 1
+    return [
+        {"source": source, "chunks": count}
+        for source, count in sorted(counts.items())
+    ]
 
-
-# --------------------------------------------------------------------------
-# 검색
-# --------------------------------------------------------------------------
-
-def cosine(a: list[float], b: list[float]) -> float:
-    """코사인 유사도(순수 파이썬, 의존성 없음)."""
-    if len(a) != len(b):
-        return 0.0
-    dot = norm_a = norm_b = 0.0
-    for x, y in zip(a, b):
-        dot += x * y
-        norm_a += x * x
-        norm_b += y * y
-    if norm_a <= 0.0 or norm_b <= 0.0:
-        return 0.0
-    return dot / (math.sqrt(norm_a) * math.sqrt(norm_b))
-
-
-def fetch_chunks(conn: sqlite3.Connection,
-                 sources: list[str] | None = None) -> list[sqlite3.Row]:
-    """Load stored chunks, optionally restricted to specific sources."""
-    sql = "SELECT source, chunk_index, text, embedding FROM chunks"
-    params: list = []
-    if sources:
-        placeholders = ",".join("?" for _ in sources)
-        sql += f" WHERE source IN ({placeholders})"
-        params.extend(sources)
-    return conn.execute(sql, params).fetchall()
 
 
 # --------------------------------------------------------------------------
@@ -410,13 +359,15 @@ def fetch_chunks(conn: sqlite3.Connection,
 #: searchable without a morphological analyser or any third-party dependency.
 CJK_START = 0x2E80
 
-BM25_K1 = 1.5
-BM25_B = 0.75
 RRF_K = 60
 
 
 def tokenize(text: str) -> list[str]:
-    """Split text into lowercased Latin/digit words plus CJK bigrams."""
+    """Split text into lowercased Latin/digit words plus CJK bigrams.
+
+    ``BM25Retriever`` 의 ``preprocess_func`` 로 그대로 전달되어 rank_bm25 가
+    한국어 등 CJK 텍스트도 형태소 분석기 없이 다룰 수 있게 한다.
+    """
     tokens: list[str] = []
     latin: list[str] = []
     cjk: list[str] = []
@@ -449,64 +400,98 @@ def tokenize(text: str) -> list[str]:
     return tokens
 
 
-def bm25_scores(query: str, documents: list[str],
-                k1: float = BM25_K1, b: float = BM25_B) -> list[float]:
-    """Score every document against the query using Okapi BM25.
+def bm25_scores(query: str, documents: list[str]) -> list[float]:
+    """Score every document against the query using Okapi BM25 (rank_bm25).
 
     Returns one score per document (higher is better); 0.0 means no overlap.
     """
     if not documents:
         return []
-
-    query_terms = set(tokenize(query))
+    query_terms = tokenize(query)
     if not query_terms:
         return [0.0] * len(documents)
 
+    from rank_bm25 import BM25Okapi
+
     doc_terms = [tokenize(document) for document in documents]
-    doc_lengths = [len(terms) for terms in doc_terms]
-    total_length = sum(doc_lengths)
-    average_length = (total_length / len(doc_lengths)) if total_length else 1.0
+    if not any(doc_terms):
+        return [0.0] * len(documents)
 
-    # Only the query terms need a document frequency.
-    frequency_in_docs = dict.fromkeys(query_terms, 0)
-    for terms in doc_terms:
-        for term in query_terms.intersection(terms):
-            frequency_in_docs[term] += 1
-
-    count = len(documents)
-    scores: list[float] = []
-    for terms, length in zip(doc_terms, doc_lengths):
-        term_counts: dict[str, int] = {}
-        for term in terms:
-            if term in frequency_in_docs:
-                term_counts[term] = term_counts.get(term, 0) + 1
-
-        score = 0.0
-        for term, frequency in term_counts.items():
-            doc_frequency = frequency_in_docs[term]
-            idf = math.log(1.0 + (count - doc_frequency + 0.5) / (doc_frequency + 0.5))
-            norm = k1 * (1.0 - b + b * (length / average_length))
-            score += idf * (frequency * (k1 + 1.0)) / (frequency + norm)
-        scores.append(score)
-    return scores
+    vectorizer = BM25Okapi(doc_terms)
+    scores = vectorizer.get_scores(query_terms)
+    return [max(0.0, float(score)) for score in scores]
 
 
-def keyword_search(conn: sqlite3.Connection, query: str, top_k: int = 5,
+def build_bm25_retriever(docs: list[Document], top_k: int = 5) -> BM25Retriever | None:
+    """저장된 문서들로부터 BM25Retriever 를 만든다(문서가 없으면 None)."""
+    if not docs:
+        return None
+    return BM25Retriever.from_documents(
+        docs, k=max(1, top_k), preprocess_func=tokenize
+    )
+
+
+
+# --------------------------------------------------------------------------
+# 검색
+# --------------------------------------------------------------------------
+
+def cosine(a: list[float], b: list[float]) -> float:
+    """코사인 유사도(순수 파이썬). 하위 호환/유틸리티용으로 유지한다.
+
+    Chroma 검색 자체는 내부적으로 HNSW 인덱스를 쓰지만, 벡터 두 개를 직접
+    비교하고 싶을 때(테스트 등) 이 헬퍼를 쓸 수 있다.
+    """
+    import math
+
+    if len(a) != len(b):
+        return 0.0
+    dot = norm_a = norm_b = 0.0
+    for x, y in zip(a, b):
+        dot += x * y
+        norm_a += x * x
+        norm_b += y * y
+    if norm_a <= 0.0 or norm_b <= 0.0:
+        return 0.0
+    return dot / (math.sqrt(norm_a) * math.sqrt(norm_b))
+
+
+def _hit_from_document(doc: Document, score: float) -> dict:
+    return {
+        "source": doc.metadata.get("source"),
+        "chunk_index": doc.metadata.get("chunk_index"),
+        "text": doc.page_content,
+        "score": round(float(score), 4),
+    }
+
+
+def keyword_search(store: Chroma, query: str, top_k: int = 5,
                    sources: list[str] | None = None) -> list[dict]:
     """BM25 keyword search over the stored chunks."""
-    rows = fetch_chunks(conn, sources)
-    scores = bm25_scores(query, [row["text"] for row in rows])
+    docs = fetch_all_documents(store, sources)
+    scores = bm25_scores(query, [doc.page_content for doc in docs])
 
     hits = [
-        {
-            "source": row["source"],
-            "chunk_index": row["chunk_index"],
-            "text": row["text"],
-            "score": round(score, 4),
-        }
-        for row, score in zip(rows, scores)
+        _hit_from_document(doc, score)
+        for doc, score in zip(docs, scores)
         if score > 0.0
     ]
+    hits.sort(key=lambda item: item["score"], reverse=True)
+    return hits[: max(1, top_k)]
+
+
+def search(store: Chroma, query: str, top_k: int = 5, min_score: float = 0.0,
+          sources: list[str] | None = None) -> list[dict]:
+    """질의 문자열과 가장 유사한 청크 top_k 를 코사인 유사도로 돌려준다."""
+    where = {"source": {"$in": sources}} if sources else None
+    results = store.similarity_search_with_relevance_scores(
+        query, k=max(1, top_k), filter=where,
+    )
+    hits: list[dict] = []
+    for doc, score in results:
+        if score < min_score:
+            continue
+        hits.append(_hit_from_document(doc, score))
     hits.sort(key=lambda item: item["score"], reverse=True)
     return hits[: max(1, top_k)]
 
@@ -537,49 +522,30 @@ def reciprocal_rank_fusion(result_lists: list[list[dict]], top_k: int = 5,
     for entry in ranked:
         entry["score"] = round(entry["score"], 6)
     return ranked[: max(1, top_k)]
-def search(conn: sqlite3.Connection, query_vector: list[float],
-           top_k: int = 5, min_score: float = 0.0,
-           sources: list[str] | None = None) -> list[dict]:
-    """질의 벡터와 가장 유사한 청크 top_k 를 돌려준다."""
-    scored: list[dict] = []
-    for row in fetch_chunks(conn, sources):
-        score = cosine(query_vector, json.loads(row["embedding"]))
-        if score < min_score:
-            continue
-        scored.append({
-            "source": row["source"],
-            "chunk_index": row["chunk_index"],
-            "text": row["text"],
-            "score": round(score, 4),
-        })
-
-    scored.sort(key=lambda item: item["score"], reverse=True)
-    return scored[: max(1, top_k)]
 
 
 def semantic_search(query: str, top_k: int = 5, min_score: float = 0.0,
                     sources: list[str] | None = None,
                     cfg: dict | None = None,
                     db_path: str | os.PathLike | None = None) -> list[dict]:
-    """질의 문자열 -> 임베딩 -> 저장소 검색까지 한 번에 수행한다.
+    """질의 문자열 -> 저장소 검색까지 한 번에 수행한다(코사인 유사도).
 
     db_path 를 주면 그 저장소를 쓴다. 주지 않으면 cfg 의 store.path 를
     (rag_core.py 위치 기준으로) 해석해 사용한다.
     """
     cfg = cfg or load_config()
     path = Path(db_path) if db_path else resolve_store_path(cfg)
-    if not path.is_file():
+    if not path.is_dir() or not any(path.iterdir()):
         raise FileNotFoundError(
             f"색인 저장소가 없습니다: {path} (먼저 ingest.py 로 색인하세요)"
         )
-    query_vector = embed_texts([query], cfg)[0]
-    conn = connect(path)
-    try:
-        return search(conn, query_vector, top_k, min_score, sources)
-    finally:
-        conn.close()
+    store = connect(path, cfg)
+    return search(store, query, top_k, min_score, sources)
+
+
+
 # --------------------------------------------------------------------------
-# Retrieval entry point
+# LangGraph 기반 검색 오케스트레이션
 # --------------------------------------------------------------------------
 
 #: Supported retrieval modes.
@@ -589,11 +555,107 @@ MODES = ("vector", "keyword", "hybrid")
 CANDIDATE_FACTOR = 4
 
 
+class SearchState(TypedDict, total=False):
+    """검색 그래프가 노드 사이에 주고받는 상태."""
+
+    query: str
+    mode: str
+    top_k: int
+    min_score: float
+    sources: list[str] | None
+    store: Chroma
+    vector_hits: list[dict]
+    keyword_hits: list[dict]
+    results: list[dict]
+
+
+def _node_retrieve_vector(state: SearchState) -> dict:
+    candidates = max(state["top_k"], state["top_k"] * CANDIDATE_FACTOR) \
+        if state["mode"] == "hybrid" else state["top_k"]
+    hits = search(
+        state["store"], state["query"], candidates,
+        state["min_score"], state["sources"],
+    )
+    return {"vector_hits": hits}
+
+
+def _node_retrieve_keyword(state: SearchState) -> dict:
+    candidates = max(state["top_k"], state["top_k"] * CANDIDATE_FACTOR) \
+        if state["mode"] == "hybrid" else state["top_k"]
+    hits = keyword_search(
+        state["store"], state["query"], candidates, state["sources"],
+    )
+    return {"keyword_hits": hits}
+
+
+def _node_fuse_hybrid(state: SearchState) -> dict:
+    fused = reciprocal_rank_fusion(
+        [state.get("vector_hits") or [], state.get("keyword_hits") or []],
+        state["top_k"],
+    )
+    return {"results": fused}
+
+
+def _node_finalize_vector(state: SearchState) -> dict:
+    return {"results": (state.get("vector_hits") or [])[: state["top_k"]]}
+
+
+def _node_finalize_keyword(state: SearchState) -> dict:
+    return {"results": (state.get("keyword_hits") or [])[: state["top_k"]]}
+
+
+def _route_mode(state: SearchState) -> str:
+    return state["mode"]
+
+
+def build_search_graph():
+    """모드(vector/keyword/hybrid)에 따라 분기하는 LangGraph 그래프를 컴파일한다."""
+    graph = StateGraph(SearchState)
+    graph.add_node("retrieve_vector", _node_retrieve_vector)
+    graph.add_node("retrieve_keyword", _node_retrieve_keyword)
+    graph.add_node("fuse_hybrid", _node_fuse_hybrid)
+    graph.add_node("finalize_vector", _node_finalize_vector)
+    graph.add_node("finalize_keyword", _node_finalize_keyword)
+
+    graph.add_conditional_edges(START, _route_mode, {
+        "vector": "retrieve_vector",
+        "keyword": "retrieve_keyword",
+        "hybrid": "retrieve_vector",
+    })
+
+    graph.add_edge("retrieve_vector", "finalize_vector")
+    graph.add_conditional_edges("finalize_vector", _route_mode, {
+        "vector": END,
+        "hybrid": "retrieve_keyword",
+    })
+
+    graph.add_edge("retrieve_keyword", "finalize_keyword")
+    graph.add_conditional_edges("finalize_keyword", _route_mode, {
+        "keyword": END,
+        "hybrid": "fuse_hybrid",
+    })
+
+    graph.add_edge("fuse_hybrid", END)
+    return graph.compile()
+
+
+#: 그래프는 상태가 없으므로(store 는 매 호출마다 state 로 전달됨) 모듈 전역에
+#: 한 번만 컴파일해 재사용한다.
+_SEARCH_GRAPH = None
+
+
+def _get_search_graph():
+    global _SEARCH_GRAPH
+    if _SEARCH_GRAPH is None:
+        _SEARCH_GRAPH = build_search_graph()
+    return _SEARCH_GRAPH
+
+
 def search_documents(query: str, top_k: int = 5, min_score: float = 0.0,
                      sources: list[str] | None = None, mode: str = "hybrid",
                      cfg: dict | None = None,
                      db_path: str | os.PathLike | None = None) -> list[dict]:
-    """Retrieve chunks for a query.
+    """Retrieve chunks for a query via the LangGraph search graph.
 
     Modes:
       * ``vector``  - cosine similarity over embeddings (semantic)
@@ -611,23 +673,21 @@ def search_documents(query: str, top_k: int = 5, min_score: float = 0.0,
         )
 
     path = Path(db_path) if db_path else resolve_store_path(cfg)
-    if not path.is_file():
+    if not path.is_dir() or not any(path.iterdir()):
         raise FileNotFoundError(
             f"색인 저장소가 없습니다: {path} (먼저 ingest.py 로 색인하세요)"
         )
 
-    conn = connect(path)
-    try:
-        if mode == "keyword":
-            return keyword_search(conn, query, top_k, sources)
+    store = connect(path, cfg)
+    graph = _get_search_graph()
+    final_state = graph.invoke({
+        "query": query,
+        "mode": mode,
+        "top_k": max(1, top_k),
+        "min_score": min_score,
+        "sources": sources,
+        "store": store,
+    })
+    return final_state.get("results", [])
 
-        query_vector = embed_texts([query], cfg)[0]
-        if mode == "vector":
-            return search(conn, query_vector, top_k, min_score, sources)
-
-        candidates = max(top_k, top_k * CANDIDATE_FACTOR)
-        vector_hits = search(conn, query_vector, candidates, min_score, sources)
-        keyword_hits = keyword_search(conn, query, candidates, sources)
-        return reciprocal_rank_fusion([vector_hits, keyword_hits], top_k)
-    finally:
-        conn.close()
+    return (base / raw).resolve()

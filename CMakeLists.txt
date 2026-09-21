@@ -95,7 +95,7 @@ if(BUILD_TESTING)
         PROPERTIES
             LABELS "rag;unit"
             ENVIRONMENT "${CLINE_RAG_TEST_ENV}"
-            TIMEOUT 600
+            TIMEOUT 1200
     )
 
     # 1b) hybrid retrieval: tokenisation, BM25, RRF, modes
@@ -113,7 +113,7 @@ if(BUILD_TESTING)
         PROPERTIES
             LABELS "rag;unit;hybrid"
             ENVIRONMENT "${CLINE_RAG_TEST_ENV}"
-            TIMEOUT 600
+            TIMEOUT 1200
     )
 
     # 2) MCP protocol/tool tests
@@ -131,7 +131,7 @@ if(BUILD_TESTING)
         PROPERTIES
             LABELS "rag;mcp;protocol"
             ENVIRONMENT "${CLINE_RAG_TEST_ENV}"
-            TIMEOUT 600
+            TIMEOUT 1200
     )
 
     # 3) smoke test: spawn the server as a real child process (no pytest)

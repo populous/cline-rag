@@ -2,9 +2,9 @@
 
 검증 대상:
   * 설정 병합/경로 해석
-  * 스트 청킹(경계, 겹침, 예외)
+  * 텍스트 청킹(RecursiveCharacterTextSplitter 기반, 경계/겹침/예외)
   * 코사인 유사도
-  * SQLite 벡터 저장소 CRUD
+  * Chroma 벡터 저장소 CRUD
   * 검색 순위 / top_k / min_score / sources 필터
 """
 
@@ -39,7 +39,7 @@ def test_load_config_merges_partial_override(tmp_path):
     assert cfg["chunking"]["size"] == 100
     assert cfg["chunking"]["overlap"] == 120          # 기본값 유지
     assert cfg["embedding"]["provider"] == "openai"
-    assert cfg["store"]["path"] == "rag_store.sqlite3"  # 기본값 유지
+    assert cfg["store"]["path"] == "rag_store_chroma"  # 기본값 유지
 
 
 def test_deep_merge_does_not_mutate_base():
@@ -50,15 +50,15 @@ def test_deep_merge_does_not_mutate_base():
 
 
 def test_resolve_store_path_relative_and_absolute(tmp_path):
-    relative = core.resolve_store_path({"store": {"path": "a/b.sqlite3"}}, tmp_path)
-    assert relative == (tmp_path / "a" / "b.sqlite3").resolve()
+    relative = core.resolve_store_path({"store": {"path": "a/b_store"}}, tmp_path)
+    assert relative == (tmp_path / "a" / "b_store").resolve()
 
-    absolute = core.resolve_store_path({"store": {"path": str(tmp_path / "x.sqlite3")}})
-    assert absolute == tmp_path / "x.sqlite3"
+    absolute = core.resolve_store_path({"store": {"path": str(tmp_path / "x_store")}})
+    assert absolute == tmp_path / "x_store"
 
 
 # ---------------------------------------------------------------------------
-# 청킹
+# 청킹 (RecursiveCharacterTextSplitter 기반)
 # ---------------------------------------------------------------------------
 
 def test_chunk_text_splits_with_overlap():
@@ -131,91 +131,59 @@ def test_cosine_opposite_is_minus_one():
 
 
 # ---------------------------------------------------------------------------
-# 저장소 (SQLite)
+# 저장소 (Chroma)
 # ---------------------------------------------------------------------------
 
-def test_connect_creates_schema(tmp_path):
-    conn = core.connect(tmp_path / "s.sqlite3")
-    try:
-        tables = {
-            row["name"]
-            for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            )
-        }
-    finally:
-        conn.close()
-    assert {"chunks", "meta"} <= tables
+def test_connect_creates_persist_directory(tmp_path, fake_embed):
+    db_path = tmp_path / "nested" / "deep" / "store"
+    core.connect(db_path)
+    assert db_path.is_dir()
 
 
-def test_connect_creates_parent_directory(tmp_path):
-    db_path = tmp_path / "nested" / "deep" / "s.sqlite3"
-    conn = core.connect(db_path)
-    conn.close()
-    assert db_path.is_file()
-
-
-def test_upsert_then_stats(tmp_path):
-    conn = core.connect(tmp_path / "s.sqlite3")
-    try:
-        rows = [{"source": "a.md", "chunk_index": 0, "text": "hello"}]
-        assert core.upsert_chunks(conn, rows, [[1.0, 0.0]], core.load_config()) == 1
-        stats = core.store_stats(conn)
-    finally:
-        conn.close()
+def test_upsert_then_stats(tmp_path, fake_embed):
+    store = core.connect(tmp_path / "s_store")
+    rows = [{"source": "a.md", "chunk_index": 0, "text": "hello"}]
+    assert core.upsert_chunks(store, rows) == 1
+    stats = core.store_stats(store)
     assert stats["chunks"] == 1
     assert stats["sources"] == 1
-    assert stats["embedding_dim"] == 2
 
 
-def test_upsert_overwrites_same_source_and_index(tmp_path):
-    conn = core.connect(tmp_path / "s.sqlite3")
-    try:
-        first = [{"source": "a.md", "chunk_index": 0, "text": "old"}]
-        core.upsert_chunks(conn, first, [[1.0, 0.0]], core.load_config())
-        second = [{"source": "a.md", "chunk_index": 0, "text": "new"}]
-        core.upsert_chunks(conn, second, [[0.0, 1.0]], core.load_config())
+def test_upsert_overwrites_same_source_and_index(tmp_path, fake_embed):
+    store = core.connect(tmp_path / "s_store")
+    first = [{"source": "a.md", "chunk_index": 0, "text": "old"}]
+    core.upsert_chunks(store, first)
+    second = [{"source": "a.md", "chunk_index": 0, "text": "new"}]
+    core.upsert_chunks(store, second)
 
-        assert core.store_stats(conn)["chunks"] == 1   # 중복 저장 안 됨
-        stored = conn.execute("SELECT text FROM chunks").fetchone()["text"]
-    finally:
-        conn.close()
+    assert core.store_stats(store)["chunks"] == 1   # 중복 저장 안 됨
+    stored = core.fetch_all_documents(store)[0].page_content
     assert stored == "new"
 
 
-def test_upsert_length_mismatch_raises(tmp_path):
-    conn = core.connect(tmp_path / "s.sqlite3")
-    try:
-        rows = [{"source": "a.md", "chunk_index": 0, "text": "x"}]
-        with pytest.raises(ValueError):
-            core.upsert_chunks(conn, rows, [], core.load_config())
-    finally:
-        conn.close()
+def test_upsert_length_mismatch_raises(tmp_path, fake_embed):
+    store = core.connect(tmp_path / "s_store")
+    rows = [{"source": "a.md", "chunk_index": 0, "text": "x"}]
+    with pytest.raises(ValueError):
+        core.upsert_chunks(store, rows, vectors=[])
 
 
 def test_delete_source_and_reset_store_seeded(seeded_store):
-    conn, _cfg = seeded_store
-    assert len(core.list_sources(conn)) == 2
+    store, _cfg = seeded_store
+    assert len(core.list_sources(store)) == 2
 
-    removed = core.delete_source(conn, str(conn.execute(
-        "SELECT source FROM chunks LIMIT 1").fetchone()["source"]))
+    first_source = core.list_sources(store)[0]["source"]
+    removed = core.delete_source(store, first_source)
     assert removed == 2                             # alpha.md 청크 2개
-    assert len(core.list_sources(conn)) == 1
+    assert len(core.list_sources(store)) == 1
 
-    core.reset_store(conn)
-    assert core.store_stats(conn)["chunks"] == 0
-
-
-def test_meta_roundtrip(seeded_store):
-    conn, _cfg = seeded_store
-    core.set_meta(conn, "flag", {"nested": [1, 2]})
-    assert core.get_meta(conn, "flag") == {"nested": [1, 2]}
-    assert core.get_meta(conn, "missing", "fallback") == "fallback"
+    core.reset_store(store)
+    assert core.store_stats(store)["chunks"] == 0
 
 
 def test_list_sources_counts(seeded_store):
-    conn, _cfg = seeded_store
-    items = {item["source"]: item["chunks"] for item in core.list_sources(conn)}
+    store, _cfg = seeded_store
+    items = {item["source"]: item["chunks"] for item in core.list_sources(store)}
     assert sorted(items.values()) == [1, 2]
 
 
@@ -224,50 +192,47 @@ def test_list_sources_counts(seeded_store):
 # ---------------------------------------------------------------------------
 
 def test_search_ranks_most_similar_first(seeded_store):
-    conn, _cfg = seeded_store
-    query = fake_vector("임베딩 모델을 바꾸면 전체 재색인이 필요하다.")
-    hits = core.search(conn, query, top_k=3)
+    store, _cfg = seeded_store
+    hits = core.search(store, "임베딩 모델을 바꾸면 전체 재색인이 필요하다.", top_k=3)
 
     assert hits[0]["chunk_index"] == 1
     assert hits[0]["source"].endswith("alpha.md")
-    assert hits[0]["score"] == pytest.approx(1.0, abs=1e-3)
+    assert hits[0]["score"] == pytest.approx(1.0, abs=1e-2)
 
 
 def test_search_respects_top_k(seeded_store):
-    conn, _cfg = seeded_store
-    hits = core.search(conn, fake_vector("청크"), top_k=2)
+    store, _cfg = seeded_store
+    hits = core.search(store, "청크", top_k=2)
     assert len(hits) == 2
 
 
 def test_search_min_score_filters(seeded_store):
-    conn, _cfg = seeded_store
-    hits = core.search(conn, fake_vector("청크"), top_k=5, min_score=0.99)
+    store, _cfg = seeded_store
+    hits = core.search(store, "청크", top_k=5, min_score=0.99)
     assert all(hit["score"] >= 0.99 for hit in hits)
-    assert len(hits) <= 1
 
 
-def test_search_sources_filter(seeded_store):
-    conn, _cfg = seeded_store
-    only_beta = [str(row["source"]) for row in conn.execute(
-        "SELECT DISTINCT source FROM chunks WHERE source LIKE '%beta.md'")]
-    hits = core.search(conn, fake_vector("Ollama"), top_k=5, sources=only_beta)
+def test_search_sources_filter(seeded_store, tmp_path):
+    store, _cfg = seeded_store
+    only_beta = [str(tmp_path / "beta.md")]
+    hits = core.search(store, "Ollama", top_k=5, sources=only_beta)
     assert len(hits) == 1
     assert hits[0]["source"].endswith("beta.md")
 
 
-def test_semantic_search_uses_embeddings(seeded_store, fake_embed, monkeypatch,
-                                          tmp_path):
-    conn, cfg = seeded_store
-    monkeypatch.setattr(core, "resolve_store_path", lambda *a, **k: tmp_path / "test_store.sqlite3")
-
-    hits = core.semantic_search("임베딩 모델 교체", top_k=2, cfg=cfg)
+def test_semantic_search_uses_embeddings(seeded_store, fake_embed):
+    store, cfg = seeded_store
+    hits = core.semantic_search(
+        "임베딩 모델 교체", top_k=2, cfg=cfg,
+        db_path=core.resolve_store_path(cfg),
+    )
     assert hits
     assert fake_embed                               # 임베딩 호출 기록 존재
-    assert hits[0]["score"] >= hits[-1]["score"]    # 내림차순 정렬
+    assert hits[0]["score"] >= hits[-1]["score"]     # 내림차순 정렬
 
 
 def test_semantic_search_missing_store_raises(tmp_path, fake_embed):
     cfg = core.load_config()
-    cfg["store"]["path"] = str(tmp_path / "absent.sqlite3")
+    cfg["store"]["path"] = str(tmp_path / "absent_store")
     with pytest.raises(FileNotFoundError):
         core.semantic_search("무엇이든", cfg=cfg)

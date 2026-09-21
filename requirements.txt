@@ -1,22 +1,29 @@
 # cline_rag -- 런타임 의존성
 #
-# 이 프로젝트는 표준 라이브러리만 사용하므로 필수 서드파티 패키지가 없습니다.
-# 그래서 아래 "필수" 항목은 비어 있습니다. 이는 누락이 아니라 설계입니다.
+# v2.0.0부터 LangChain + LangGraph 기반으로 전환되었습니다.
+# (이전 버전은 표준 라이브러리만으로 구현되어 있었습니다.)
 #
-#   * 이유: Python 3.14 환경에서 pip 설치 없이 바로 동작하도록 만들었습니다.
-#   * 검증: python -c "import ast,sys,pathlib; ..." 로 서드파티 임포트 0건 확인
-#   * 사용 중인 표준 라이브러리:
-#       argparse, json, math, os, pathlib, sqlite3,
-#       subprocess, sys, traceback, typing, urllib
+#   * 임베딩       : langchain-ollama / langchain-openai
+#   * 벡터 저장소  : langchain-chroma (chromadb, 로컬 디스크 영속)
+#   * 청킹         : langchain-text-splitters
+#   * 키워드 검색  : langchain-community의 BM25Retriever (+ rank_bm25)
+#   * 검색 오케스트레이션 : langgraph (StateGraph 로 vector/keyword/hybrid 분기)
 #
-# MCP 서버(rag_server.py)는 별도 웹 프레임워크 없이 stdio JSON-RPC 를
-# 직접 구현했고, 벡터 저장소는 sqlite3, 유사도 계산은 순수 파이썬으로 처리합니다.
+# MCP 서버(rag_server.py) 자체는 여전히 stdio JSON-RPC 를 직접 구현합니다
+# (별도 웹 프레임워크 불필요).
 #
 # ---------------------------------------------------------------------------
 # 필수 (Required)
 # ---------------------------------------------------------------------------
-# (없음)
-
+langchain-core>=1.0
+langchain-text-splitters>=1.0
+langchain-chroma>=1.0
+chromadb>=1.0
+langchain-ollama>=1.0
+langchain-openai>=1.0
+langchain-community>=0.4
+rank_bm25>=0.2
+langgraph>=1.0
 
 # ---------------------------------------------------------------------------
 # 선택 (Optional) -- 필요할 때만 설치하세요
@@ -31,8 +38,9 @@
 #   python -m venv .venv
 #   .\.venv\Scripts\Activate.ps1
 #   python -m pip install --upgrade pip
-#   python -m pip install -r requirements.txt          # 의존성 없음(검증용)
+#   python -m pip install -r requirements.txt          # 런타임 의존성
+#   python -m pip install -r requirements-dev.txt      # 테스트(pytest)
 #
 # 설치 후 동작 확인:
-#   python ingest.py --stats
-#   python test_mcp.py
+#   python src\ingest.py --stats
+#   python smoke_mcp.py

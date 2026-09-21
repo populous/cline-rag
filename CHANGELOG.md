@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- Migrated the RAG core from a zero-dependency (standard-library-only)
+  implementation to **LangChain + LangGraph**:
+  - Embeddings: `langchain_ollama.OllamaEmbeddings` /
+    `langchain_openai.OpenAIEmbeddings` (replaces the hand-rolled
+    `urllib` HTTP calls)
+  - Vector store: `langchain_chroma.Chroma`, persisted locally under
+    `rag_store_chroma/` (replaces the `rag_store.sqlite3` file; the two
+    formats are **not** compatible, run `ingest.py --reset` to reindex)
+  - Chunking: `langchain_text_splitters.RecursiveCharacterTextSplitter`
+    (replaces the hand-rolled paragraph-aware chunker; `chunk_text()` is
+    kept as a thin wrapper for compatibility)
+  - Keyword search: `langchain_community.retrievers.BM25Retriever` +
+    `rank_bm25`, still driven by the project's own CJK bigram tokenizer
+  - Search orchestration: a `langgraph.graph.StateGraph` that routes
+    `vector`/`keyword`/`hybrid` modes through dedicated nodes and
+    conditional edges (replaces the if/elif dispatch in
+    `search_documents()`)
+- `config.json` `store.path` now points to a Chroma persist directory
+  instead of a SQLite file; `store.dim` was removed (Chroma manages
+  embedding dimensionality itself)
+- `SERVER_VERSION` bumped to `2.0.0` to signal the breaking storage
+  format change
+- `requirements.txt` now lists real third-party dependencies
+  (`langchain-core`, `langchain-text-splitters`, `langchain-chroma`,
+  `chromadb`, `langchain-ollama`, `langchain-openai`,
+  `langchain-community`, `rank_bm25`, `langgraph`); the "zero
+  dependency" design note no longer applies
+- `requirements-optional.txt` dropped `numpy` (now a transitive
+  dependency of `chromadb`)
+
+### Notes
+
+- The MCP tool surface (`search_docs`, `list_indexed_sources`,
+  `index_status`, `reindex`) and their input schemas are unchanged;
+  only the implementation behind them moved to LangChain/LangGraph
+- `tests/conftest.py` now provides a deterministic fake
+  `langchain_core.embeddings.Embeddings` implementation instead of a
+  bare function, so tests still run without Ollama/OpenAI
+
 ## [1.1.0] - 2026-09-20
 
 Keyword and hybrid retrieval, plus an in-chat reindex tool.
