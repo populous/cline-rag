@@ -10,9 +10,10 @@
 ## 이 프로젝트가 하는 일 (한 문단 요약)
 
 `cline-rag`는 여러분의 로컬 문서(`docs/` 폴더)를 미리 읽어서 검색 가능한 형태로
-저장해두고, [Cline](https://cline.bot) 이 대화 중에 "이 질문에 답하려면 문서를
+저장해두고, [OpenCode](https://opencode.ai) 가 대화 중에 "이 질문에 답하려면 문서를
 찾아봐야겠다" 싶을 때 스스로 호출하는 **MCP 서버**입니다. 여러분이 직접 검색
-버튼을 누르는 게 아니라, Cline 이 필요할 때 알아서 씁니다.
+버튼을 누르는 게 아니라, OpenCode 가 필요할 때 알아서 씁니다. (Cline 도 동일한
+MCP 서버를 등록해 쓸 수 있습니다.)
 
 ---
 
@@ -24,8 +25,8 @@
 - [ ] **Python 3.10 이상** — 설치 확인: `python --version`
 - [ ] **[Ollama](https://ollama.com/download)** — 로컬 임베딩 모델을 돌리는 프로그램
       (인터넷에 API 키를 보내지 않고 내 PC 에서 임베딩을 계산합니다)
-- [ ] **[Cline](https://marketplace.visualstudio.com/items?itemName=saoudrizwan.claude-dev)** —
-      VS Code 확장. 이미 설치되어 있다고 가정합니다.
+- [ ] **[OpenCode](https://opencode.ai)** — MCP 클라이언트 역할을 하는 에이전트.
+      이미 설치되어 있다고 가정합니다.
 
 Ollama 를 처음 설치했다면, 설치 후 한 번 실행해서 백그라운드로 떠 있는지
 확인하세요(트레이 아이콘 또는 `ollama --version` 이 응답하면 정상).
@@ -67,12 +68,12 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1
 
 ```
 Setup complete.
-Register this in your Cline MCP settings:
-  command : C:\...\cline-rag\.venv\Scripts\python.exe
-  args    : C:\...\cline-rag\src\rag_server.py
+Register this in your OpenCode MCP settings:
+  type    : local
+  command : [C:\...\cline-rag\.venv\Scripts\python.exe, 'C:\...\cline-rag\src\rag_server.py']
 ```
 
-이 두 줄(`command`, `args`)은 **4단계(선택, Cline 채팅 연동)**에서 필요하니
+이 정보는 **4단계(선택, OpenCode 채팅 연동)**에서 필요하니
 기억해 두세요. 지금 당장은 필요 없습니다 — 바로 다음 단계에서 터미널로 질문할
 수 있습니다.
 
@@ -92,7 +93,7 @@ Register this in your Cline MCP settings:
 
 ## 3단계 — 지금 바로 질문해보기 (가장 빠른 방법)
 
-VS Code 나 Cline 을 켜지 않고도, **터미널에서 바로** 질문하고 답을 볼 수
+VS Code 나 에이전트를 켜지 않고도, **터미널에서 바로** 질문하고 답을 볼 수
 있습니다. 이게 가장 확실하고 가장 빠른 확인 방법입니다.
 
 ```powershell
@@ -122,7 +123,7 @@ cd C:\path\to\cline-rag
 이렇게 결과가 나오면 색인/검색이 정상 동작하는 것입니다. `ask.ps1` 자세한
 옵션(`--top-k`, `--mode`, `--json` 등)은 6단계에서 다룹니다.
 
-> **MCP/서버 기동 자체를 확인하고 싶다면**(예: Cline 연동 전 사전 점검):
+> **MCP/서버 기동 자체를 확인하고 싶다면**(예: OpenCode 연동 전 사전 점검):
 > ```powershell
 > .\.venv\Scripts\python.exe smoke_mcp.py
 > ```
@@ -130,10 +131,10 @@ cd C:\path\to\cline-rag
 
 ---
 
-## 4단계 — 선택: Cline 채팅에서도 쓰고 싶다면 (MCP 서버 등록)
+## 4단계 — 선택: OpenCode 채팅에서도 쓰고 싶다면 (MCP 서버 등록)
 
 `ask.ps1` 로 터미널에서 질문하는 것만으로도 충분하다면 이 단계는 건너뛰어도
-됩니다. **Cline 과 대화하는 중에 Cline 이 스스로 문서를 검색하게** 하려면
+됩니다. **OpenCode 와 대화하는 중에 OpenCode 가 스스로 문서를 검색하게** 하려면
 MCP 서버로 등록하세요.
 
 ### 가장 쉬운 방법: `ask.ps1` 이 자동으로 등록해줍니다
@@ -141,55 +142,55 @@ MCP 서버로 등록하세요.
 JSON 파일을 직접 열어서 편집하지 않아도 됩니다.
 
 ```powershell
-.\ask.ps1 --mcp-install
+.\ask.ps1 --mcp-install --mcp-target opencode
 ```
 
-이 한 줄로 `.venv` 의 실제 경로가 채워진 `cline-rag` 항목이 Cline 설정
-파일(`~/.cline/data/settings/cline_mcp_settings.json`)에 자동으로 추가됩니다.
+이 한 줄로 `.venv` 의 실제 경로가 채워진 `cline-rag` 항목이 OpenCode 설정
+파일(`~/.config/opencode/opencode.json`)에 자동으로 추가됩니다.
 이미 등록되어 있으면 실수로 덮어쓰지 않도록 오류를 내며, 갱신하려면
 `--mcp-install --force` 를 쓰세요.
 
 등록이 잘 됐는지 확인하려면:
 
 ```powershell
-.\ask.ps1 --mcp-status
+.\ask.ps1 --mcp-status --mcp-target opencode
 ```
 
 ```
-'cline-rag' 등록됨: C:\Users\...\cline_mcp_settings.json
-  command : C:\...\cline-rag\.venv\Scripts\python.exe
-  args    : ['C:\\...\\cline-rag\\src\\rag_server.py']
-  disabled: False
+'cline-rag' 등록됨: C:\Users\...\opencode.json
+  type    : local
+  command : ['C:\...\cline_rag\.venv\Scripts\python.exe', 'C:\...\cline_rag\src\rag_server.py']
+  enabled : True
 ```
 
 `command` 경로가 잘못됐거나 `.venv` 가 없으면 경고 메시지와 함께 원인을
-알려줍니다. 그다음 VS Code 에서 Cline 확장을 열고 MCP 서버 목록에서
-`cline-rag` 가 초록불(연결됨)로 보이는지 확인하면 끝입니다.
+알려줍니다. 그다음 OpenCode 를 (재)시작하면 `cline-rag` 의 도구가
+등록됩니다.
 
 ### 직접 JSON 을 편집하고 싶다면 (수동 방법)
 
 `--mcp-print` 로 등록할 JSON 조각만 뽑아볼 수도 있습니다:
 
 ```powershell
-.\ask.ps1 --mcp-print
+.\ask.ps1 --mcp-print --mcp-target opencode
 ```
 
-1. VS Code 에서 Cline 확장을 엽니다.
-2. Cline 설정에서 **MCP Servers** 항목을 찾아 설정 파일을 엽니다. 보통 경로는:
+1. OpenCode 의 전역 설정 파일을 엽니다. 보통 경로는:
    ```
-   C:\Users\<사용자이름>\.cline\data\settings\cline_mcp_settings.json
+   C:\Users\<사용자이름>\.config\opencode\opencode.json
    ```
-3. 아래 내용을 채워 넣습니다(경로는 2단계에서 나온 값으로 바꾸세요).
+2. 아래 내용을 채워 넣습니다(경로는 `--mcp-print` 결과 값으로 바꾸세요).
 
 ```json
 {
-  "mcpServers": {
+  "mcp": {
     "cline-rag": {
-      "command": "C:\\path\\to\\cline-rag\\.venv\\Scripts\\python.exe",
-      "args": ["C:\\path\\to\\cline-rag\\src\\rag_server.py"],
-      "env": {},
-      "disabled": false,
-      "autoApprove": ["search_docs", "list_indexed_sources", "index_status"]
+      "type": "local",
+      "command": [
+        "C:\\path\\to\\cline_rag\\.venv\\Scripts\\python.exe",
+        "C:\\path\\to\\cline_rag\\src\\rag_server.py"
+      ],
+      "enabled": true
     }
   }
 }
@@ -199,16 +200,24 @@ JSON 파일을 직접 열어서 편집하지 않아도 됩니다.
 > `.venv\Scripts\python.exe` 의 **전체 경로**를 넣어야 합니다. 그렇지 않으면
 > MCP 서버가 켜지지 않을 수 있습니다.
 >
-> `reindex` 는 문서를 다시 쓰는 도구라서 `autoApprove` 목록에 **넣지 않습니다**
-> (Cline 이 실행 전에 항상 여러분에게 승인을 요청하게 됩니다).
+> `reindex` 는 문서를 다시 쓰는 도구라서 자동 승인(`permission` allow) 목록에
+> **넣지 않습니다** (OpenCode 가 실행 전에 항상 여러분에게 승인을 요청하게 됩니다).
 
-4. 설정 파일을 저장하면 Cline 이 자동으로 서버를 인식합니다. Cline 의 MCP
-   서버 목록에서 `cline-rag` 가 초록불(연결됨)로 보이면 성공입니다.
-5. Cline 채팅창에서 이렇게 확인해 보세요:
+3. 설정 파일을 저장하면 OpenCode 가 서버를 인식합니다. 도구 목록에
+   `search_docs`, `list_indexed_sources`, `index_status` 가 보이면 성공입니다.
+4. OpenCode 채팅에서 이렇게 확인해 보세요:
    > "search_docs 로 '청크 크기'에 대해 검색해줘"
-   Cline 이 `search_docs` 도구를 스스로 호출하고 검색 결과를 바탕으로
+   OpenCode 가 `search_docs` 도구를 스스로 호출하고 검색 결과를 바탕으로
    답하면 성공입니다. 결과는 방금 3단계에서 터미널로 본 것과 동일합니다
    (내부적으로 완전히 같은 코드 경로를 씁니다).
+
+검색 규칙은 루트의 `AGENTS.md` 에 있으며 OpenCode 가 자동으로 로드합니다.
+
+### 레거시: Cline 에 등록하려면
+
+Cline 을 계속 쓰려면 `--mcp-target cline`(기본값)으로 `--mcp-install` 을 실행하면
+기존 `~/.cline/data/settings/cline_mcp_settings.json` 의 `mcpServers` 형식으로
+등록됩니다.
 
 ---
 
@@ -230,7 +239,7 @@ JSON 파일을 직접 열어서 편집하지 않아도 됩니다.
 .\.venv\Scripts\python.exe src\ingest.py --stats   # 청크/파일 수 통계
 ```
 
-또는 Cline 채팅에서 바로 "reindex 도구로 문서를 다시 색인해줘"라고 요청해도 됩니다
+또는 OpenCode 채팅에서 바로 "reindex 도구로 문서를 다시 색인해줘"라고 요청해도 됩니다
 (이때는 승인 창이 뜨는 게 정상입니다).
 
 ---
@@ -311,12 +320,12 @@ Ollama 가 각 청크를 벡터(숫자 배열)로 변환합니다.
 
 ### 6-4. 질의응답 (Query)
 
-이제 방금 등록한 문서에만 있는 내용을 질문해봅니다. Cline 채팅창에 아래처럼
-입력하면 Cline 이 `search_docs` 도구를 스스로 호출합니다.
+이제 방금 등록한 문서에만 있는 내용을 질문해봅니다. OpenCode 채팅창에 아래처럼
+입력하면 OpenCode 가 `search_docs` 도구를 스스로 호출합니다.
 
 > "연차는 반차 단위로도 신청할 수 있니?"
 
-**Cline을 켜지 않고 터미널에서 바로 확인하고 싶다면 `ask.ps1` 을 쓰세요.**
+**OpenCode 를 켜지 않고 터미널에서 바로 확인하고 싶다면 `ask.ps1` 을 쓰세요.**
 파이프나 리다이렉션, MCP/JSON-RPC 를 전혀 몰라도 됩니다. 가상환경을
 활성화하지 않아도, `python` 이 시스템 파이썬을 가리켜도 상관없습니다 —
 `ask.ps1` 이 항상 `.venv` 의 파이썬을 자동으로 찾아서 실행해줍니다:
@@ -349,12 +358,12 @@ Ollama 가 각 청크를 벡터(숫자 배열)로 변환합니다.
 ...
 ```
 
-Cline 은 이 검색 결과(문서 원문 발췌)를 근거로 삼아 "네, 연차는 반차(0.5일)
+OpenCode 는 이 검색 결과(문서 원문 발췌)를 근거로 삼아 "네, 연차는 반차(0.5일)
 단위로도 신청할 수 있습니다."처럼 **문서에 실제로 적힌 내용을 바탕으로** 답합니다.
-이게 바로 RAG 의 핵심입니다 — Cline 이 모르는 내용을 지어내지 않고, 방금
-색인한 문서에서 근거를 찾아 답한다는 것입니다. `ask.py` 는 Cline 이 내부적으로
+이게 바로 RAG 의 핵심입니다 — OpenCode 가 모르는 내용을 지어내지 않고, 방금
+색인한 문서에서 근거를 찾아 답한다는 것입니다. `ask.py` 는 OpenCode 가 내부적으로
 호출하는 것과 **완전히 동일한 코드 경로**(`rag_core.search_documents()`)를
-쓰므로, 여기서 본 결과가 곧 Cline 이 받을 결과입니다.
+쓰므로, 여기서 본 결과가 곧 OpenCode 가 받을 결과입니다.
 
 `ask.ps1` 에서 자주 쓰는 옵션:
 
@@ -408,7 +417,7 @@ A. 문서를 추가/수정한 뒤 재색인을 안 했을 가능성이 큽니다
    를 실행해보세요. 그래도 이상하면 `search_docs` 의 `mode` 를 `vector` 로 지정해
    순수 의미 검색만 시도해보세요(기본값은 `hybrid`).
 
-**Q. 서버가 Cline 에서 빨간불(연결 실패)로 나와요.**
+**Q. 서버가 OpenCode 에서 연결 실패로 나와요.**
 A. `command` 경로가 `.venv\Scripts\python.exe` 의 **절대 경로**인지, 오타가 없는지
    확인하세요. 터미널에서 `.\.venv\Scripts\python.exe smoke_mcp.py` 가 통과하는지
    먼저 확인하면 원인을 좁힐 수 있습니다.

@@ -405,4 +405,4 @@ def test_reindex_is_not_auto_approvable_by_convention(mcp_stdin):
     responses = run_server(mcp_stdin, request("tools/list"))
     tool = next(t for t in responses[0]["result"]["tools"]
                 if t["name"] == "reindex")
-    assert "autoApprove" in tool["description"]
+    assert "자동 승인" in tool["description"]

@@ -226,33 +226,31 @@ python -c "import rag_core as c; [print(round(h['score'],4), h['source'].split('
 
 ---
 
-## 7. Cline 에 MCP 서버 등록
+## 7. OpenCode 에 MCP 서버 등록
 
 ### 7-1. 설정 파일 위치
 
 | 사용 환경 | 경로 |
 |---|---|
-| VS Code 확장 | Cline 패널 → MCP Servers 아이콘 → Configure 탭 → **Configure MCP Servers** 버튼 |
-| 이 PC 의 실제 파일 | `C:\Users\<you>\.cline\data\settings\cline_mcp_settings.json` |
-| Cline CLI | `~/.cline/mcp.json` |
+| 전역(모든 프로젝트) | `~/.config/opencode/opencode.json` |
+| 프로젝트 | `<프로젝트 루트>/opencode.json` |
+
+> 자동 등록이 더 간편합니다: `.\ask.ps1 --mcp-install --mcp-target opencode`
 
 ### 7-2. 등록 내용
 
-`mcpServers` 아래에 항목을 추가합니다.
+`mcp` 아래에 항목을 추가합니다.
 
 ```json
 {
-  "mcpServers": {
+  "mcp": {
     "cline-rag": {
-      "command": "C:\\path\\to\\cline_rag\\.venv\\Scripts\\python.exe",
-      "args": [
+      "type": "local",
+      "command": [
+        "C:\\path\\to\\cline_rag\\.venv\\Scripts\\python.exe",
         "C:\\path\\to\\cline_rag\\src\\rag_server.py"
       ],
-      "env": {
-        "OPENAI_API_KEY": "sk-... (OpenAI 임베딩을 쓸 때만)"
-      },
-      "disabled": false,
-      "autoApprove": ["search_docs", "list_indexed_sources", "index_status"]
+      "enabled": true
     }
   }
 }
@@ -260,57 +258,46 @@ python -c "import rag_core as c; [print(round(h['score'],4), h['source'].split('
 
 **중요 포인트**
 
-- `command` 는 **`.venv\Scripts\python.exe` 절대 경로**를 씁니다.
-  시스템 `python` 은 Windows Store 셰임을 가리킬 수 있어 MCP 기동에 실패합니다.
-- `args` 는 **`src\rag_server.py`** 입니다(소스가 src/ 에 있음).
+- `command` 는 **`.venv\Scripts\python.exe` 절대 경로**와 `src\rag_server.py` 를
+  **하나의 배열**로 넣습니다.
 - 경로 구분자는 **백슬래시 두 개(`\\`)** 여야 합니다(JSON 이스케이프).
-- `autoApprove` 에 `search_docs` 를 넣으면 매번 승인 버튼을 누르지 않아도 됩니다.
-  읽기 전용 도구만 넣고, 쓰기/삭제 도구는 넣지 마세요.
-- 비밀 값은 `env` 로 주입합니다(JSON 에 평문 커밋 금지).
+- OpenAI 임베딩을 쓸 때만 `"environment": {"OPENAI_API_KEY": "sk-..."}` 를
+  추가합니다.
 - `rag_server.py` 는 자기 파일 위치를 기준으로 동작하므로 MCP 의 작업 디렉터리와 무관합니다.
+- 쓰기 도구(`reindex`)는 자동 승인(`permission` allow) 목록에 넣지 말고,
+  실행 전에 사용자 승인을 받게 합니다.
 
 ### 7-3. 연결 확인
 
-1. Cline 패널에서 **MCP Servers** 아이콘을 엽니다.
-2. `cline-rag` 가 초록색(연결됨)인지 봅니다.
+1. `.\ask.ps1 --mcp-status --mcp-target opencode` 로 등록/경로 일치를 확인합니다.
+2. OpenCode 를 (재)시작하면 `cline-rag` 도구가 등록됩니다.
 3. 도구 목록에 `search_docs`, `list_indexed_sources`, `index_status` 가 보이는지 확인합니다.
-4. `index_status` 를 한 번 직접 실행해 봅니다.
 
 안 되면:
 - `python smoke_mcp.py` 로 서버 자체를 먼저 검사합니다
-- Cline 의 MCP 서버 출력 패널에서 stderr 로그를 봅니다
+- OpenCode 의 MCP 서버 로그/stderr 를 봅니다
 - 경로에 공백/한글이 있으면 따옴표 처리를 확인합니다
 
 ---
 
-## 8. Cline 에서 실제로 사용하기
+## 8. OpenCode 에서 실제로 사용하기
 
-등록이 끝나면 Cline 채팅에서 이렇게 쓰면 됩니다.
+등록이 끝나면 OpenCode 채팅에서 이렇게 쓰면 됩니다.
 
 ```
 docs/ 규칙에 맞춰 청크 크기를 정하려면 어떻게 해야 해? 저장소 근거로 답해줘.
 ```
 
-Cline 은 내부적으로 `search_docs("청크 크기 권장")` 를 호출하고, 반환된 청크를
+OpenCode 는 내부적으로 `search_docs("청크 크기 권장")` 를 호출하고, 반환된 청크를
 근거로 답합니다. 도구 호출은 채팅 로그에 표시되므로 **정말 검색을 했는지** 확인할 수 있습니다.
 
-### 자동 호출을 유도하는 규칙 (`.clinerules`)
+### 자동 호출을 유도하는 규칙 (`AGENTS.md`)
 
-워크스페이스 루트에 `.clinerules` 폴더를 만들고 규칙 파일을 추가합니다.
+이 저장소 루트의 `AGENTS.md` 에 검색 규칙이 이미 들어 있습니다. OpenCode 가
+프로젝트를 열면 이 파일을 자동으로 로드해, 답변 전에 문서를 검색하게 됩니다.
 
-`.clinerules/rag.md`
-```markdown
-# 문서 검색 규칙
-
-- 이 워크스페이스의 문서/코드에 대해 질문받으면 답변 전에
-  `search_docs` 도구를 먼저 호출한다.
-- 검색 결과를 근거로 답하고, 사용한 파일 경로를 함께 밝힌다.
-- 검색 결과가 비어 있으면 추측하지 말고 색인이 필요하다고 알린다.
-- `ingest.py` 를 실행해야 할 때는 사용자에게 먼저 확인을 받는다.
-```
-
-> 이 저장소의 `clinerules-template.md` 를 그대로 복사해도 됩니다.
-> `.clinerules` 는 **워크스페이스 루트**에 만들어야 적용됩니다.
+> OpenCode 는 프로젝트 루트의 `AGENTS.md`(없으면 `CLAUDE.md`)를 자동 로드합니다.
+> Cline 용 규칙은 `.clinerules/`(또는 `clinerules-template.md`)를 씁니다.
 
 ---
 

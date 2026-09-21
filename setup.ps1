@@ -85,6 +85,6 @@ if ($SkipCmake) {
 
 Write-Host ""
 Write-Host "Setup complete." -ForegroundColor Green
-Write-Host "Register this in your Cline MCP settings:"
-Write-Host "  command : $py"
-Write-Host "  args    : $(Join-Path $PSScriptRoot 'src\rag_server.py')"
+Write-Host "Register this in your OpenCode MCP settings:"
+Write-Host "  type    : local"
+Write-Host "  command : [$py, '$(Join-Path $PSScriptRoot 'src\rag_server.py')']"

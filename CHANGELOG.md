@@ -9,15 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- OpenCode (opencode.ai) MCP integration: the `cline-rag` MCP server can now
-  be registered with OpenCode in addition to Cline. OpenCode v2 reads its
-  config from `~/.config/opencode/opencode.json` (global) or a project-level
-  `opencode.json`, and declares a local MCP server under the `mcp` key as
-  `{"type": "local", "command": ["<.venv python>", "src/rag_server.py"], "enabled": true}`
-  -- unlike Cline, `command` is a single array that merges the separate
-  `command`/`args` keys. The server's four tools (`search_docs`,
-  `list_indexed_sources`, `index_status`, `reindex`) then become available to
-  OpenCode's LLM under the `cline-rag` prefix.
+- OpenCode (opencode.ai) support across the project, making OpenCode the
+  primary MCP client alongside Cline:
+  - `AGENTS.md` at the repo root: OpenCode auto-loads these search-first rules
+    (call `search_docs` before answering, cite sources, never fabricate, get
+    approval before `reindex`), plus a build/test/run command reference.
+  - `ask.py` gained `--mcp-target cline|opencode` (default `cline`). With
+    `opencode`, `--mcp-print`/`--mcp-status`/`--mcp-install` target
+    `~/.config/opencode/opencode.json` and emit the OpenCode shape
+    `{"mcp": {"cline-rag": {"type": "local", "command": ["<venv python>", "<rag_server.py>"], "enabled": true}}}`
+    instead of Cline's `mcpServers`/`command`+`args` form.
+  - `setup.ps1` prints OpenCode registration instructions.
+- Documentation migrated to OpenCode-first (`README.md`, `GETTING_STARTED.md`,
+  `RAG_STEP_BY_STEP.md` §7/§8), with Cline kept as a documented legacy path.
+
+### Changed
+
+- `rag_server.py` `reindex` tool description now warns against adding it to
+  auto-approval lists generically (`autoApprove`/`permission allow`) rather
+  than naming Cline's `autoApprove` only.
+
+### Notes
+
+- 5 new `tests/test_ask_cli.py` cases cover the OpenCode print/status/install
+  path (no external services). Existing Cline `--mcp-*` behavior is unchanged
+  and still covered.
+- The MCP server name `cline-rag` and store directory names are unchanged
+  (renaming is intentionally out of scope for this migration).
 
 ## [2.0.0] - 2026-09-21
 

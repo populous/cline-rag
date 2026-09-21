@@ -11,11 +11,11 @@
 
 - **터미널 CLI (`ask.ps1` / `ask.cmd`)** — 가장 빠른 사용법. 설치 후
   `.\ask.ps1 "질문"` 한 줄로 바로 검색 결과를 봅니다.
-- **Cline MCP 서버 (`rag_server.py`)** — Cline 채팅 중에 `search_docs` 등의
+- **OpenCode MCP 서버 (`rag_server.py`)** — OpenCode 채팅 중에 `search_docs` 등의
   도구를 스스로 호출하게 하려면 이 서버를 MCP 로 등록합니다(선택).
 
 **처음 사용하시나요?** **[GETTING_STARTED.md](GETTING_STARTED.md)** 에서
-설치부터 Cline 등록까지 순서대로 따라 하세요.
+설치부터 OpenCode 등록까지 순서대로 따라 하세요.
 
 전체 구축 과정은 **[RAG_STEP_BY_STEP.md](RAG_STEP_BY_STEP.md)**  보세요.
 변경 이력은 **[CHANGELOG.md](CHANGELOG.md)** 에 있습니다.
@@ -179,30 +179,34 @@ python -m pip install -r requirements-optional.txt   # pypdf
   `min_score`(코사인 하한)가 적용되지 않습니다.
   임계값이 필요하면 `mode="vector"` 를 쓰세요.
 
-## Cline 등록
+## OpenCode 등록
 
 `ask.py` 에 등록/확인/자동 설치 옵션이 내장되어 있습니다(수동으로 JSON을
-직접 만들 필요가 없습니다):
+직접 만들 필요가 없습니다). 대상 클라이언트는 `--mcp-target` 으로 고릅니다
+(`opencode` 또는 `cline`, 기본값은 `cline`):
 
 ```powershell
-.\ask.ps1 --mcp-print     # 등록용 JSON 조각만 화면에 출력 (복사해서 붙여넣기용)
-.\ask.ps1 --mcp-status    # 실제 등록 여부/경로 일치 여부를 확인
-.\ask.ps1 --mcp-install   # 설정 파일에 자동으로 등록 (기존 값이 있으면 --force 필요)
+.\ask.ps1 --mcp-print --mcp-target opencode    # OpenCode 등록용 JSON 조각 출력
+.\ask.ps1 --mcp-status --mcp-target opencode   # 등록 여부/경로 일치 확인
+.\ask.ps1 --mcp-install --mcp-target opencode  # 설정 파일에 자동 등록 (기존 값이 있으면 --force)
 ```
+
+### OpenCode 수동 등록
 
 수동으로 등록하려면 아래 경로의 파일을 직접 편집하세요:
 
-`C:\Users\<you>\.cline\data\settings\cline_mcp_settings.json`
+`C:\Users\<you>\.config\opencode\opencode.json`
 
 ```json
 {
-  "mcpServers": {
+  "mcp": {
     "cline-rag": {
-      "command": "C:\\path\\to\\cline_rag\\.venv\\Scripts\\python.exe",
-      "args": ["C:\\path\\to\\cline_rag\\src\\rag_server.py"],
-      "env": {},
-      "disabled": false,
-      "autoApprove": ["search_docs", "list_indexed_sources", "index_status"]
+      "type": "local",
+      "command": [
+        "C:\\path\\to\\cline_rag\\.venv\\Scripts\\python.exe",
+        "C:\\path\\to\\cline_rag\\src\\rag_server.py"
+      ],
+      "enabled": true
     }
   }
 }
@@ -212,6 +216,16 @@ python -m pip install -r requirements-optional.txt   # pypdf
 > 환경이 격리되고 경로가 고정됩니다. 특히 이 PC 는 `python` 이
 > Windows Store 셰임(`WindowsApps\python.exe`)을 가리켜서 그대로 쓰면
 > MCP 기동에 실패할 수 있습니다.
+
+검색 규칙은 루트의 `AGENTS.md` 에 있습니다. OpenCode 가 프로젝트를 열면
+자동으로 이 규칙을 로드해 답변 전에 문서를 검색하게 됩니다.
+
+### 레거시: Cline 등록
+
+Cline 을 계속 쓰려면 `--mcp-target cline`(기본값)으로 동일한 옵션을 쓰면
+기존 `~/.cline/data/settings/cline_mcp_settings.json` 의 `mcpServers` 형식으로
+등록됩니다. 규칙 파일은 `.clinerules/`(또는 `clinerules-template.md`)를
+쓰세요.
 
 ## 명령 요약
 
@@ -223,18 +237,18 @@ python src\ingest.py --prune         # 삭삭제된 파일 청크 제거
 python src\ingest.py --stats         # 현황
 python src\ingest.py --list          # 색색인된 파일 목록
 
-# 질의응답 (MCP/Cline 없이 터미널에서 바로. .venv 를 자동으로 찾아 실행한다)
+# 질의응답 (MCP 없이 터미널에서 바로. .venv 를 자동으로 찾아 실행한다)
 .\ask.ps1 "질문"                          # hybrid 검색 (기본)
 .\ask.ps1 "질문" --mode vector --top-k 5  # 순수 의미 검색
 .\ask.ps1 "질문" --json                   # 스크립트 연동용 JSON 출력
 # cmd.exe 에서는: ask.cmd "질문"
 # .venv 를 알고 있다면 직접 지정도 가능: .\.venv\Scripts\python.exe src\ask.py "질문"
 
-# Cline MCP 등록 관리 (질문 없이 사용)
-.\ask.ps1 --mcp-print                 # 등록용 JSON 조각 출력
-.\ask.ps1 --mcp-status                # 등록 여부/경로 확인
-.\ask.ps1 --mcp-install                # 자동 등록 (이미 있으면 --force 필요)
-.\ask.ps1 --mcp-install --force        # 기존 등록 덮어쓰기
+# MCP 등록 관리 (OpenCode/Cline, 질문 없이 사용)
+.\ask.ps1 --mcp-print --mcp-target opencode    # OpenCode 등록용 JSON 조각 출력
+.\ask.ps1 --mcp-install --mcp-target opencode  # OpenCode 자동 등록 (이미 있으면 --force)
+.\ask.ps1 --mcp-status --mcp-target opencode   # 등록 여부/경로 확인
+.\ask.ps1 --mcp-install --force                # 기존 등록 덮어쓰기 (기본값: cline)
 .\ask.ps1 --mcp-status --mcp-settings C:\path\to\custom.json   # 설정 파일 경로 지정
 
 # 테스트
