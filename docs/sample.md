@@ -1,4 +1,4 @@
-# Cline RAG 샘플 문서
+# RAG 샘플 문서
 
 ## 1. RAG 란 무엇인가
 
@@ -31,12 +31,12 @@ RAG(Retrieval-Augmented Generation, 검색 증강 생성)는 질문에 답하기
 일반적으로 500~1000자, 겹침은 청크 크기의 10~20% 를 권장한다.
 이 프로젝트의 기본값은 size 800, overlap 120 이다.
 
-## 5. Cline 과 MCP
+## 5. OpenCode 와 MCP
 
-Cline 은 MCP(Model Context Protocol) 서버를 통해 외부 도구를 사용한다.
-RAG 검색기를 MCP 서버로 만들면 Cline 이 대화 중에 search_docs 도구를
-스스로 호출해 근거를 찾을 수 있다. Cline 설정 파일의 mcpServers 항목에
-command 와 args 를 등록하면 된다.
+OpenCode 는 MCP(Model Context Protocol) 서버를 통해 외부 도구를 사용한다.
+RAG 검색기를 MCP 서버로 만들면 OpenCode 가 대화 중에 search_docs 도구를
+스스로 호출해 근거를 찾을 수 있다. OpenCode 설정 파일의 mcp 항목에
+type: local 과 command 배열을 등록하면 된다.
 
 ## 6. 자주 겪는 문제
 
