@@ -134,12 +134,12 @@ cd C:\path\to\cline-rag
 
 `모든 검사 통과` 가 나오면 서버가 정상 동작한다는 뜻입니다.
 
-**바로 검색을 해보고 싶다면** `src\ask.py` 를 쓰세요(자세한 사용법은 6단계
-참고). 질문을 그냥 따옴표로 감싸서 인자로 넘기면 됩니다 — 파이프, 리다이렉션,
-콘솔 코드페이지 설정 없이 바로 동작합니다:
+**바로 검색을 해보고 싶다면** `ask.ps1` 를 쓰세요(자세한 사용법은 6단계
+참고). 질문을 그냥 따옴표로 감싸서 인자로 넘기면 됩니다 — 가상환경을
+활성화하거나 `.venv` 경로를 직접 입력할 필요도 없습니다:
 
 ```powershell
-.\.venv\Scripts\python.exe src\ask.py "청크 크기는 얼마가 적당한가?"
+.\ask.ps1 "청크 크기는 얼마가 적당한가?"
 ```
 
 검색 결과가 출력되면 정상입니다. Cline 채팅창에서는 이렇게 확인해 보세요:
@@ -254,13 +254,20 @@ Ollama 가 각 청크를 벡터(숫자 배열)로 변환합니다.
 
 > "연차는 반차 단위로도 신청할 수 있니?"
 
-**Cline을 켜지 않고 터미널에서 바로 확인하고 싶다면 `ask.py` 를 쓰세요.**
-파이프나 리다이렉션, MCP/JSON-RPC 를 전혀 몰라도 됩니다 — 질문을 그냥
-커맨드라인 인자로 넘기면 끝입니다(Windows 콘솔 코드페이지 문제도 없습니다):
+**Cline을 켜지 않고 터미널에서 바로 확인하고 싶다면 `ask.ps1` 을 쓰세요.**
+파이프나 리다이렉션, MCP/JSON-RPC 를 전혀 몰라도 됩니다. 가상환경을
+활성화하지 않아도, `python` 이 시스템 파이썬을 가리켜도 상관없습니다 —
+`ask.ps1` 이 항상 `.venv` 의 파이썬을 자동으로 찾아서 실행해줍니다:
 
 ```powershell
-.\.venv\Scripts\python.exe src\ask.py "연차는 반차 단위로도 신청할 수 있니?"
+.\ask.ps1 "연차는 반차 단위로도 신청할 수 있니?"
 ```
+
+> ⚠️ **`.\.venv\Scripts\python.exe src\ask.py "..."` 처럼 직접 `.venv` 경로를
+> 입력하지 않고, 그냥 `python src\ask.py "..."` 라고만 치면 시스템 파이썬이
+> 실행되어 `ModuleNotFoundError: No module named 'langchain_community'`
+> 오류가 납니다. 이 문제를 원천적으로 피하려고 만든 것이 `ask.ps1` 입니다.
+> (cmd.exe 사용자는 `ask.cmd "질문"` 도 동일하게 동작합니다.)
 
 **실제 실행 결과**:
 
@@ -287,21 +294,25 @@ Cline 은 이 검색 결과(문서 원문 발췌)를 근거로 삼아 "네, 연�
 호출하는 것과 **완전히 동일한 코드 경로**(`rag_core.search_documents()`)를
 쓰므로, 여기서 본 결과가 곧 Cline 이 받을 결과입니다.
 
-`ask.py` 에서 자주 쓰는 옵션:
+`ask.ps1` 에서 자주 쓰는 옵션:
 
 ```powershell
 # 결과 개수 조절 (기본 3개)
-.\.venv\Scripts\python.exe src\ask.py "청크 크기" --top-k 1
+.\ask.ps1 "청크 크기" --top-k 1
 
 # 검색 모드 지정: hybrid(기본, 의미+키워드) | vector(순수 의미) | keyword(정확한 용어)
-.\.venv\Scripts\python.exe src\ask.py "청크 크기" --mode keyword
+.\ask.ps1 "청크 크기" --mode keyword
 
 # 특정 파일만 검색
-.\.venv\Scripts\python.exe src\ask.py "연차" --sources docs\example_vacation_policy.md
+.\ask.ps1 "연차" --sources docs\example_vacation_policy.md
 
 # 스크립트에서 결과를 이어서 처리하고 싶을 때 (JSON 출력)
-.\.venv\Scripts\python.exe src\ask.py "청크 크기" --json
+.\ask.ps1 "청크 크기" --json
 ```
+
+> 이미 `.venv` 를 알고 있고 직접 경로를 지정하고 싶다면
+> `.\.venv\Scripts\python.exe src\ask.py "질문"` 도 동일하게 동작합니다
+> (`ask.ps1` 은 이 명령을 자동으로 대신 해주는 것뿐입니다).
 
 > `score` 값이 낮게(0.03 대) 보이는 이유: 기본 모드가 `hybrid`(벡터+키워드
 > RRF 순위 점수)라서 코사인 유사도(0~1)와는 스케일이 다릅니다. 순수 의미
@@ -346,8 +357,25 @@ A. Windows PowerShell 콘솔의 코드페이지(cp949 등)와 파이프 인코�
    않아서 생기는 문제입니다. 이 프로젝트의 CLI 들(`ask.py`, `ingest.py`,
    `rag_server.py`)은 내부적으로 stdout/stderr 를 UTF-8 로 강제 고정하므로,
    **파이프나 리다이렉션 없이 인자로만 실행**하면 문제가 없습니다
-   (`python src\ask.py "질문"` 처럼). 굳이 결과를 파일로 저장해야 한다면
+   (`.\ask.ps1 "질문"` 처럼). 굳이 결과를 파일로 저장해야 한다면
    `... | Out-File -Encoding utf8 결과.txt` 처럼 인코딩을 명시하세요.
+
+**Q. `python src\ask.py "질문"` 을 쳤더니
+`ModuleNotFoundError: No module named 'langchain_community'` 가 나요.**
+A. 시스템 `python`(예: `C:\Program Files\Python313\python.exe`)으로 실행해서
+   생기는 문제입니다. 이 프로젝트의 의존성은 `.venv` 가상환경에만 설치되어
+   있습니다. 아래 확인 방법으로 원인을 바로 알 수 있습니다:
+   ```powershell
+   python -c "import sys; print(sys.executable)"   # .venv 안이 아니면 문제
+   ```
+   해결 방법은 두 가지입니다.
+   1. **`ask.ps1` 을 쓰세요** — `.venv` 를 자동으로 찾아 실행해줍니다:
+      `.\ask.ps1 "질문"`
+   2. 직접 `.venv` 경로를 지정해서 실행하세요:
+      `.\.venv\Scripts\python.exe src\ask.py "질문"`
+
+   같은 이유로 `ingest.py` 나 `rag_server.py` 를 직접 실행할 때도 항상
+   `python` 이 아니라 `.\.venv\Scripts\python.exe` 를 써야 합니다.
 
 **Q. 다음에 또 뭘 봐야 하나요?**
 A. 검색 모드(`hybrid`/`vector`/`keyword`)의 차이나 버전 관리/릴리스 절차는

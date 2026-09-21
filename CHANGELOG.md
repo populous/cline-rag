@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ask.ps1` (and `ask.cmd` for cmd.exe): launcher scripts that always run
+  `src/ask.py` through the project's `.venv` interpreter, regardless of
+  what `python` resolves to on the caller's PATH. This avoids the
+  confusing `ModuleNotFoundError: No module named 'langchain_community'`
+  that happens when someone runs `python src\ask.py` with a system
+  Python instead of `.venv\Scripts\python.exe`.
+- `src/ask.py` now detects that exact mis-launch (system Python missing
+  the LangChain/LangGraph/Chroma stack) and prints a clear Korean
+  explanation with the correct command to run, instead of a raw
+  traceback.
 - `src/ask.py`: a plain CLI to query the index directly from a terminal,
   without going through MCP/JSON-RPC or a subprocess wrapper. The query is
   passed as a command-line argument (not piped), so it is immune to the

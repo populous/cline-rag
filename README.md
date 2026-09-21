@@ -37,6 +37,7 @@ cline_rag/
 ├── config.json                # 임베딩 제공자 / Chroma 저장소 / 청킹 설정
 ├── smoke_mcp.py               # 서버를 자식 프로세스로 띄우는 스모크 검사
 ├── setup.ps1                  # venv + 의존성 + 색인 + 테스트 (원클릭)
+├── ask.ps1 / ask.cmd          # .venv 를 자동으로 찾아 src\ask.py 를 실행하는 런처
 ├── requirements.txt           # 런타임 의존성 (LangChain/LangGraph/Chroma)
 ├── requirements-dev.txt       # 테스트 의존성 (pytest)
 ├── requirements-optional.txt  # 선택 확장 (pypdf)
@@ -205,10 +206,12 @@ python src\ingest.py --prune         # 삭삭제된 파일 청크 제거
 python src\ingest.py --stats         # 현황
 python src\ingest.py --list          # 색색인된 파일 목록
 
-# 질의응답 (MCP/Cline 없이 터미널에서 바로)
-python src\ask.py "질문"                          # hybrid 검색 (기본)
-python src\ask.py "질문" --mode vector --top-k 5  # 순수 의미 검색
-python src\ask.py "질문" --json                   # 스크립트 연동용 JSON 출력
+# 질의응답 (MCP/Cline 없이 터미널에서 바로. .venv 를 자동으로 찾아 실행한다)
+.\ask.ps1 "질문"                          # hybrid 검색 (기본)
+.\ask.ps1 "질문" --mode vector --top-k 5  # 순수 의미 검색
+.\ask.ps1 "질문" --json                   # 스크립트 연동용 JSON 출력
+# cmd.exe 에서는: ask.cmd "질문"
+# .venv 를 알고 있다면 직접 지정도 가능: .\.venv\Scripts\python.exe src\ask.py "질문"
 
 # 테스트
 python smoke_mcp.py                  # MCP 스모크 (자식 프로세스)

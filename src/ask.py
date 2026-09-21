@@ -19,8 +19,43 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
-import rag_core as core
+
+def _venv_python_hint() -> str:
+    """프로젝트 루트 기준 .venv 파이썬의 예상 경로를 안내 문구로 만든다."""
+    project_dir = Path(__file__).resolve().parent.parent
+    venv_python = project_dir / ".venv" / "Scripts" / "python.exe"
+    return str(venv_python)
+
+
+try:
+    import rag_core as core
+except ModuleNotFoundError as exc:
+    if exc.name in {"langchain_community", "langchain_core", "langchain_chroma",
+                    "langchain_text_splitters", "langgraph"}:
+        for _stream in (sys.stdout, sys.stderr):
+            _reconfigure = getattr(_stream, "reconfigure", None)
+            if callable(_reconfigure):
+                try:
+                    _reconfigure(encoding="utf-8", errors="replace")
+                except (ValueError, OSError):
+                    pass
+        hint = _venv_python_hint()
+        print(
+            "오류: 필요한 패키지({name})를 찾을 수 없습니다.\n"
+            "지금 실행한 python 이 이 프로젝트의 가상환경(.venv)이 아닌 것 같습니다.\n"
+            "실행한 인터프리터: {executable}\n\n"
+            "아래처럼 .venv 의 python 으로 실행하세요:\n"
+            "  {hint} src\\ask.py \"질문\"\n\n"
+            ".venv 가 아직 없다면 먼저 setup.ps1 을 실행하세요:\n"
+            "  powershell -ExecutionPolicy Bypass -File .\\setup.ps1".format(
+                name=exc.name, executable=sys.executable, hint=hint,
+            ),
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from None
+    raise
 
 
 def force_utf8_output() -> None:
