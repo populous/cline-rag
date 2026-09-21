@@ -165,6 +165,152 @@ Cline 이 `search_docs` 도구를 스스로 호출하고 검색 결과를 바탕
 
 ---
 
+## 6단계 — 실전 예시: 문서 1건을 등록해서 질의응답까지 해보기
+
+앞 단계들이 "명령어를 어떻게 치는지"였다면, 이번엔 **문서 하나를 실제로 넣고
+질문해서 답을 받는 전체 과정**을 그대로 따라 해봅니다. 아래 결과는 실제로
+이 프로젝트에서 실행해서 얻은 출력입니다(여러분 PC 에서도 동일하게 나옵니다).
+
+### 6-1. 예시 문서 준비
+
+`docs/example_vacation_policy.md` 파일을 만들고 아래 내용을 넣습니다
+(회사 실제 정책이 아니라 테스트용 가상 문서입니다).
+
+```markdown
+# 사내 휴가 신청 정책 (예시 문서)
+
+## 1. 연차 휴가
+
+- 입사 1년 차부터 매년 15일의 연차가 발생한다.
+- 3년 이상 근무 시 2년마다 1일씩 추가되며, 최대 25일까지 늘어난다.
+- 연차는 반차(0.5일) 단위로도 신청할 수 있다.
+
+## 2. 신청 절차
+
+1. 사내 인트라넷의 "휴가 신청" 메뉴에서 날짜와 사유를 입력한다.
+2. 팀장 승인을 받으면 자동으로 캘린더에 반영된다.
+3. 휴가 시작일 최소 3일 전까지 신청해야 한다.
+
+## 3. 병가와 경조휴가
+
+- 병가는 연 10일까지 별도로 부여되며, 3일 이상 사용 시 진단서가 필요하다.
+- 경조휴가(결혼, 출산, 상조 등)는 사유별로 3~10일이 부여되고 연차에서 차감되지 않는다.
+```
+
+> 실제 예시 파일은 이 저장소의 `docs/example_vacation_policy.md` 에 이미 들어
+> 있으니, 직접 만들지 않고 그대로 색인해서 따라 해봐도 됩니다.
+
+### 6-2. 색인 등록 (Register)
+
+```powershell
+.\.venv\Scripts\python.exe src\ingest.py
+```
+
+**실제 실행 결과**:
+
+```
+임베딩 제공자 : ollama
+저장소        : C:\...\cline-rag\rag_store_chroma
+대상 파일     : 2개
+청크 3개 임베딩/색인 중...
+
+  진행 3/3
+색인 완료: 3개 청크 저장
+  총 청크        : 3
+  총 파일        : 2
+  임베딩 제공자  : OllamaEmbeddings
+```
+
+`docs/` 안의 두 파일(`sample.md`, `example_vacation_policy.md`)이 총 3개
+청크로 나뉘어 Chroma 저장소(`rag_store_chroma/`)에 저장됩니다. 이 과정에서
+Ollama 가 각 청크를 벡터(숫자 배열)로 변환합니다.
+
+### 6-3. 색인 확인 (Verify)
+
+```powershell
+.\.venv\Scripts\python.exe src\ingest.py --list
+```
+
+```
+1  C:\...\cline-rag\docs\example_vacation_policy.md
+2  C:\...\cline-rag\docs\sample.md
+```
+
+앞의 숫자가 그 파일의 청크 수입니다. `example_vacation_policy.md` 는 짧아서
+1개 청크, `sample.md` 는 좀 더 길어서 2개 청크로 나뉘었습니다.
+
+### 6-4. 질의응답 (Query)
+
+이제 방금 등록한 문서에만 있는 내용을 질문해봅니다. Cline 채팅창에 아래처럼
+입력하면 Cline 이 `search_docs` 도구를 스스로 호출합니다.
+
+> "연차는 반차 단위로도 신청할 수 있니?"
+
+Cline 대신 터미널에서 MCP 프로토콜로 직접 확인할 수도 있습니다(디버깅용):
+
+```powershell
+.\.venv\Scripts\python.exe -c @'
+import json, subprocess
+proc = subprocess.Popen(
+    [r".venv\Scripts\python.exe", r"src\rag_server.py"],
+    stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+    text=True, encoding="utf-8",
+)
+def send(payload):
+    proc.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    proc.stdin.flush()
+    return json.loads(proc.stdout.readline()) if "id" in payload else None
+
+send({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+      "params": {"protocolVersion": "2025-06-18", "capabilities": {}}})
+resp = send({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+             "params": {"name": "search_docs",
+                        "arguments": {"query": "연차는 반차 단위로도 신청할 수 있니?", "top_k": 2}}})
+print(resp["result"]["content"][0]["text"])
+proc.stdin.close()
+'@
+```
+
+**실제 실행 결과** (`search_docs` 도구의 응답 그대로):
+
+```
+'연차는 반차 단위로도 신청할 수 있니?' [hybrid] 검색 결과 1건
+
+[1] score=0.0164 | docs\example_vacation_policy.md#chunk0
+# 사내 휴가 신청 정책 (예시 문서)
+...
+## 1. 연차 휴가
+
+- 입사 1년 차부터 매년 15일의 연차가 발생한다.
+- 3년 이상 근무 시 2년마다 1일씩 추가되며, 최대 25일까지 늘어난다.
+- 연차는 반차(0.5일) 단위로도 신청할 수 있다.
+
+## 2. 신청 절차
+...
+```
+
+Cline 은 이 검색 결과(문서 원문 발췌)를 근거로 삼아 "네, 연차는 반차(0.5일)
+단위로도 신청할 수 있습니다."처럼 **문서에 실제로 적힌 내용을 바탕으로** 답합니다.
+이게 바로 RAG 의 핵심입니다 — Cline 이 모르는 내용을 지어내지 않고, 방금
+색인한 문서에서 근거를 찾아 답한다는 것입니다.
+
+> `score` 값이 낮게(0.0164) 보이는 이유: 기본 모드가 `hybrid`(벡터+키워드
+> RRF 순위 점수)라서 코사인 유사도(0~1)와는 스케일이 다릅니다. 순수 의미
+> 유사도 점수가 필요하면 `mode: "vector"` 로 질의하세요.
+
+### 6-5. 문서를 지웠을 때 (선택)
+
+예시가 끝나면 `docs/example_vacation_policy.md` 를 지우고 다시 색인하면
+됩니다. `--prune` 옵션을 쓰면 더 이상 존재하지 않는 파일의 청크를 저장소에서
+같이 제거합니다.
+
+```powershell
+Remove-Item docs\example_vacation_policy.md
+.\.venv\Scripts\python.exe src\ingest.py --prune
+```
+
+---
+
 ## 자주 묻는 질문 (FAQ)
 
 **Q. 색인된 데이터는 어디에 저장되나요?**
