@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `src/ask.py`: a plain CLI to query the index directly from a terminal,
+  without going through MCP/JSON-RPC or a subprocess wrapper. The query is
+  passed as a command-line argument (not piped), so it is immune to the
+  Windows console codepage/pipe-encoding issues that broke earlier
+  copy-pasted examples. Supports `--top-k`, `--mode`, `--min-score`,
+  `--sources`, `--config` and `--json`. Internally calls the exact same
+  `rag_core.search_documents()` path that `rag_server.py`'s `search_docs`
+  tool uses, so results are identical to what Cline would see.
+- `tests/test_ask_cli.py` and the `rag.cli` CTest test covering it.
+
 ### Breaking
 
 - Migrated the RAG core from a zero-dependency (standard-library-only)

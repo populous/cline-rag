@@ -134,6 +134,24 @@ if(BUILD_TESTING)
             TIMEOUT 1200
     )
 
+    # 2b) ask.py CLI tests (no MCP/JSON-RPC involved, just argv -> stdout)
+    add_test(
+        NAME rag.cli
+        COMMAND
+            "${CLINE_RAG_TEST_PYTHON}" -m pytest
+            "${CMAKE_SOURCE_DIR}/tests/test_ask_cli.py"
+            -v -p no:cacheprovider
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    )
+
+    set_tests_properties(
+        rag.cli
+        PROPERTIES
+            LABELS "rag;unit;cli"
+            ENVIRONMENT "${CLINE_RAG_TEST_ENV}"
+            TIMEOUT 1200
+    )
+
     # 3) smoke test: spawn the server as a real child process (no pytest)
     add_test(
         NAME rag.smoke
@@ -149,7 +167,7 @@ if(BUILD_TESTING)
             TIMEOUT 300
     )
 
-    message(STATUS "Registered CTest tests: rag.unit, rag.hybrid, rag.mcp, rag.smoke")
+    message(STATUS "Registered CTest tests: rag.unit, rag.hybrid, rag.mcp, rag.cli, rag.smoke")
 
     # ------------------------------------------------------------------
     # Convenience target that runs the whole pack

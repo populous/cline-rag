@@ -134,7 +134,15 @@ cd C:\path\to\cline-rag
 
 `모든 검사 통과` 가 나오면 서버가 정상 동작한다는 뜻입니다.
 
-Cline 채팅창에서는 이렇게 확인해 보세요:
+**바로 검색을 해보고 싶다면** `src\ask.py` 를 쓰세요(자세한 사용법은 6단계
+참고). 질문을 그냥 따옴표로 감싸서 인자로 넘기면 됩니다 — 파이프, 리다이렉션,
+콘솔 코드페이지 설정 없이 바로 동작합니다:
+
+```powershell
+.\.venv\Scripts\python.exe src\ask.py "청크 크기는 얼마가 적당한가?"
+```
+
+검색 결과가 출력되면 정상입니다. Cline 채팅창에서는 이렇게 확인해 보세요:
 
 > "search_docs 로 '청크 크기'에 대해 검색해줘"
 
@@ -246,37 +254,20 @@ Ollama 가 각 청크를 벡터(숫자 배열)로 변환합니다.
 
 > "연차는 반차 단위로도 신청할 수 있니?"
 
-Cline 대신 터미널에서 MCP 프로토콜로 직접 확인할 수도 있습니다(디버깅용):
+**Cline을 켜지 않고 터미널에서 바로 확인하고 싶다면 `ask.py` 를 쓰세요.**
+파이프나 리다이렉션, MCP/JSON-RPC 를 전혀 몰라도 됩니다 — 질문을 그냥
+커맨드라인 인자로 넘기면 끝입니다(Windows 콘솔 코드페이지 문제도 없습니다):
 
 ```powershell
-.\.venv\Scripts\python.exe -c @'
-import json, subprocess
-proc = subprocess.Popen(
-    [r".venv\Scripts\python.exe", r"src\rag_server.py"],
-    stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-    text=True, encoding="utf-8",
-)
-def send(payload):
-    proc.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    proc.stdin.flush()
-    return json.loads(proc.stdout.readline()) if "id" in payload else None
-
-send({"jsonrpc": "2.0", "id": 1, "method": "initialize",
-      "params": {"protocolVersion": "2025-06-18", "capabilities": {}}})
-resp = send({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
-             "params": {"name": "search_docs",
-                        "arguments": {"query": "연차는 반차 단위로도 신청할 수 있니?", "top_k": 2}}})
-print(resp["result"]["content"][0]["text"])
-proc.stdin.close()
-'@
+.\.venv\Scripts\python.exe src\ask.py "연차는 반차 단위로도 신청할 수 있니?"
 ```
 
-**실제 실행 결과** (`search_docs` 도구의 응답 그대로):
+**실제 실행 결과**:
 
 ```
-'연차는 반차 단위로도 신청할 수 있니?' [hybrid] 검색 결과 1건
+'연차는 반차 단위로도 신청할 수 있니?' [hybrid] 검색 결과 3건
 
-[1] score=0.0164 | docs\example_vacation_policy.md#chunk0
+[1] score=0.032787 | docs\example_vacation_policy.md#chunk0
 # 사내 휴가 신청 정책 (예시 문서)
 ...
 ## 1. 연차 휴가
@@ -292,11 +283,29 @@ proc.stdin.close()
 Cline 은 이 검색 결과(문서 원문 발췌)를 근거로 삼아 "네, 연차는 반차(0.5일)
 단위로도 신청할 수 있습니다."처럼 **문서에 실제로 적힌 내용을 바탕으로** 답합니다.
 이게 바로 RAG 의 핵심입니다 — Cline 이 모르는 내용을 지어내지 않고, 방금
-색인한 문서에서 근거를 찾아 답한다는 것입니다.
+색인한 문서에서 근거를 찾아 답한다는 것입니다. `ask.py` 는 Cline 이 내부적으로
+호출하는 것과 **완전히 동일한 코드 경로**(`rag_core.search_documents()`)를
+쓰므로, 여기서 본 결과가 곧 Cline 이 받을 결과입니다.
 
-> `score` 값이 낮게(0.0164) 보이는 이유: 기본 모드가 `hybrid`(벡터+키워드
+`ask.py` 에서 자주 쓰는 옵션:
+
+```powershell
+# 결과 개수 조절 (기본 3개)
+.\.venv\Scripts\python.exe src\ask.py "청크 크기" --top-k 1
+
+# 검색 모드 지정: hybrid(기본, 의미+키워드) | vector(순수 의미) | keyword(정확한 용어)
+.\.venv\Scripts\python.exe src\ask.py "청크 크기" --mode keyword
+
+# 특정 파일만 검색
+.\.venv\Scripts\python.exe src\ask.py "연차" --sources docs\example_vacation_policy.md
+
+# 스크립트에서 결과를 이어서 처리하고 싶을 때 (JSON 출력)
+.\.venv\Scripts\python.exe src\ask.py "청크 크기" --json
+```
+
+> `score` 값이 낮게(0.03 대) 보이는 이유: 기본 모드가 `hybrid`(벡터+키워드
 > RRF 순위 점수)라서 코사인 유사도(0~1)와는 스케일이 다릅니다. 순수 의미
-> 유사도 점수가 필요하면 `mode: "vector"` 로 질의하세요.
+> 유사도 점수가 필요하면 `--mode vector` 로 질의하세요.
 
 ### 6-5. 문서를 지웠을 때 (선택)
 
@@ -330,6 +339,15 @@ A. 문서를 추가/수정한 뒤 재색인을 안 했을 가능성이 큽니다
 A. `command` 경로가 `.venv\Scripts\python.exe` 의 **절대 경로**인지, 오타가 없는지
    확인하세요. 터미널에서 `.\.venv\Scripts\python.exe smoke_mcp.py` 가 통과하는지
    먼저 확인하면 원인을 좁힐 수 있습니다.
+
+**Q. 터미널에서 명령을 실행하면 한글이 깨지거나(`?`, 물음표 등) 스크립트가
+자꾸 이상하게 동작해요.**
+A. Windows PowerShell 콘솔의 코드페이지(cp949 등)와 파이프 인코딩이 맞지
+   않아서 생기는 문제입니다. 이 프로젝트의 CLI 들(`ask.py`, `ingest.py`,
+   `rag_server.py`)은 내부적으로 stdout/stderr 를 UTF-8 로 강제 고정하므로,
+   **파이프나 리다이렉션 없이 인자로만 실행**하면 문제가 없습니다
+   (`python src\ask.py "질문"` 처럼). 굳이 결과를 파일로 저장해야 한다면
+   `... | Out-File -Encoding utf8 결과.txt` 처럼 인코딩을 명시하세요.
 
 **Q. 다음에 또 뭘 봐야 하나요?**
 A. 검색 모드(`hybrid`/`vector`/`keyword`)의 차이나 버전 관리/릴리스 절차는

@@ -22,12 +22,14 @@ cline_rag/
 │   ├── rag_core.py            # 임베딩(Ollama/OpenAI) + Chroma 벡터 저장소
 │   │                          # + RecursiveCharacterTextSplitter + BM25 + LangGraph 검색
 │   ├── ingest.py              # 문서 -> 청크 -> 임베딩 -> Chroma 색인 CLI
+│   ├── ask.py                 # 터미널에서 바로 질의응답하는 CLI (MCP 몰라도 됨)
 │   └── rag_server.py          # MCP stdio 서버 (도구 4개)
 ├── tests/                     # pytest 테스트
 │   ├── conftest.py            # 공용 픽스처 (외부 서비스 불필요, 가짜 Embeddings)
 │   ├── test_rag_core.py       # 코어 단위 테스트
 │   ├── test_hybrid_search.py  # 토크나이저/BM25/RRF/검색 모드 테스트
-│   └── test_mcp_server.py     # MCP 프로토콜/도구 테스트
+│   ├── test_mcp_server.py     # MCP 프로토콜/도구 테스트
+│   └── test_ask_cli.py        # ask.py CLI 테스트
 ├── docs/                      # 색인할 문서
 ├── CMakeLists.txt             # 테스트 패킹 유틸 (pytest -> CTest 래핑)
 ├── CMakePresets.json          # default / ninja / ci 프리셋
@@ -96,6 +98,7 @@ cmake --build build --config Debug --target test-pack
 | `rag.unit` | `pytest tests/test_rag_core.py -v` | `rag;unit` |
 | `rag.hybrid` | `pytest tests/test_hybrid_search.py -v` | `rag;unit;hybrid` |
 | `rag.mcp` | `pytest tests/test_mcp_server.py -v` | `rag;mcp;protocol` |
+| `rag.cli` | `pytest tests/test_ask_cli.py -v` | `rag;unit;cli` |
 | `rag.smoke` | `smoke_mcp.py` (자식 프로세스 핸드셰이크) | `rag;smoke` |
 
 CMake 옵션:
@@ -201,6 +204,11 @@ python src\ingest.py --reset         # 전체 재색인
 python src\ingest.py --prune         # 삭삭제된 파일 청크 제거
 python src\ingest.py --stats         # 현황
 python src\ingest.py --list          # 색색인된 파일 목록
+
+# 질의응답 (MCP/Cline 없이 터미널에서 바로)
+python src\ask.py "질문"                          # hybrid 검색 (기본)
+python src\ask.py "질문" --mode vector --top-k 5  # 순수 의미 검색
+python src\ask.py "질문" --json                   # 스크립트 연동용 JSON 출력
 
 # 테스트
 python smoke_mcp.py                  # MCP 스모크 (자식 프로세스)
