@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-21
+
 ### Added
 
 - `ask.py`: MCP (Cline) registration management options, so users no longer
@@ -203,6 +205,7 @@ First public release of the Cline RAG MCP server.
 - Verified on Python 3.14.7 with CMake/CTest 4.4.3 on Windows
 - CI runs on windows-latest with Python 3.12 (pytest + smoke + CTest)
 
-[Unreleased]: https://github.com/populous/cline-rag/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/populous/cline-rag/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/populous/cline-rag/releases/tag/v2.0.0
 [1.1.0]: https://github.com/populous/cline-rag/releases/tag/v1.1.0
 [1.0.0]: https://github.com/populous/cline-rag/releases/tag/v1.0.0
