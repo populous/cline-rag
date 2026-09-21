@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ask.py`: MCP (Cline) registration management options, so users no longer
+  have to hand-edit `cline_mcp_settings.json`:
+  - `--mcp-print` prints the JSON snippet to add, with this project's
+    actual `.venv` python path and `rag_server.py` path already filled in.
+  - `--mcp-status [--mcp-settings PATH]` checks whether `cline-rag` is
+    registered in Cline's settings file, and flags mismatched paths,
+    missing `.venv`, or `disabled: true`.
+  - `--mcp-install [--force] [--mcp-settings PATH]` merges the entry into
+    the settings file directly (creating the file/parent dirs if needed),
+    preserving any other already-registered MCP servers. Refuses to
+    overwrite an existing `cline-rag` entry unless `--force` is given.
+  - The `query` positional argument is now optional (`nargs="?"`) so these
+    `--mcp-*` options can be used without also passing a question.
+  - Covered by 7 new tests in `tests/test_ask_cli.py`.
 - `ask.ps1` / `ask.cmd`: fix Korean text getting mangled when the script's
   stdout is piped, redirected to a file, or captured by the caller.
   PowerShell interprets a native process's stdout using `$OutputEncoding` /

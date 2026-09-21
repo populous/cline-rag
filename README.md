@@ -181,6 +181,17 @@ python -m pip install -r requirements-optional.txt   # pypdf
 
 ## Cline 등록
 
+`ask.py` 에 등록/확인/자동 설치 옵션이 내장되어 있습니다(수동으로 JSON을
+직접 만들 필요가 없습니다):
+
+```powershell
+.\ask.ps1 --mcp-print     # 등록용 JSON 조각만 화면에 출력 (복사해서 붙여넣기용)
+.\ask.ps1 --mcp-status    # 실제 등록 여부/경로 일치 여부를 확인
+.\ask.ps1 --mcp-install   # 설정 파일에 자동으로 등록 (기존 값이 있으면 --force 필요)
+```
+
+수동으로 등록하려면 아래 경로의 파일을 직접 편집하세요:
+
 `C:\Users\<you>\.cline\data\settings\cline_mcp_settings.json`
 
 ```json
@@ -218,6 +229,13 @@ python src\ingest.py --list          # 색색인된 파일 목록
 .\ask.ps1 "질문" --json                   # 스크립트 연동용 JSON 출력
 # cmd.exe 에서는: ask.cmd "질문"
 # .venv 를 알고 있다면 직접 지정도 가능: .\.venv\Scripts\python.exe src\ask.py "질문"
+
+# Cline MCP 등록 관리 (질문 없이 사용)
+.\ask.ps1 --mcp-print                 # 등록용 JSON 조각 출력
+.\ask.ps1 --mcp-status                # 등록 여부/경로 확인
+.\ask.ps1 --mcp-install                # 자동 등록 (이미 있으면 --force 필요)
+.\ask.ps1 --mcp-install --force        # 기존 등록 덮어쓰기
+.\ask.ps1 --mcp-status --mcp-settings C:\path\to\custom.json   # 설정 파일 경로 지정
 
 # 테스트
 python smoke_mcp.py                  # MCP 스모크 (자식 프로세스)

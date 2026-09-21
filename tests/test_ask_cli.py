@@ -90,3 +90,96 @@ def test_ask_help_does_not_crash(capsys):
     assert exc_info.value.code == 0
     captured = capsys.readouterr()
     assert "query" in captured.out
+
+
+def test_ask_requires_query_unless_mcp_option_given(capsys):
+    with pytest.raises(SystemExit) as exc_info:
+        ask.main([])
+    assert exc_info.value.code != 0
+    captured = capsys.readouterr()
+    assert "query" in captured.err
+
+
+# --------------------------------------------------------------------------
+# MCP (Cline 연동) 설정 옵션
+# --------------------------------------------------------------------------
+
+
+def test_mcp_print_outputs_valid_json_snippet(capsys):
+    exit_code = ask.main(["--mcp-print"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads(captured.out)
+    entry = payload["mcpServers"]["cline-rag"]
+    assert entry["command"].endswith("python.exe")
+    assert entry["args"][0].endswith("rag_server.py")
+    assert entry["disabled"] is False
+    assert "search_docs" in entry["autoApprove"]
+
+
+def test_mcp_status_missing_file_reports_error(tmp_path, capsys):
+    settings_path = tmp_path / "cline_mcp_settings.json"
+    exit_code = ask.main(["--mcp-status", "--mcp-settings", str(settings_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert "없습니다" in captured.out
+
+
+def test_mcp_install_then_status_roundtrip(tmp_path, capsys):
+    settings_path = tmp_path / "cline_mcp_settings.json"
+
+    exit_code = ask.main(["--mcp-install", "--mcp-settings", str(settings_path)])
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "등록했습니다" in captured.out
+    assert settings_path.exists()
+
+    exit_code = ask.main(["--mcp-status", "--mcp-settings", str(settings_path)])
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "등록됨" in captured.out
+
+
+def test_mcp_install_preserves_other_existing_servers(tmp_path, capsys):
+    settings_path = tmp_path / "cline_mcp_settings.json"
+    settings_path.write_text(
+        json.dumps({"mcpServers": {"other-server": {"command": "x", "args": []}}}),
+        encoding="utf-8",
+    )
+
+    exit_code = ask.main(["--mcp-install", "--mcp-settings", str(settings_path)])
+    assert exit_code == 0
+
+    saved = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert "other-server" in saved["mcpServers"]
+    assert "cline-rag" in saved["mcpServers"]
+
+
+def test_mcp_install_rejects_duplicate_without_force(tmp_path, capsys):
+    settings_path = tmp_path / "cline_mcp_settings.json"
+
+    exit_code = ask.main(["--mcp-install", "--mcp-settings", str(settings_path)])
+    assert exit_code == 0
+
+    exit_code = ask.main(["--mcp-install", "--mcp-settings", str(settings_path)])
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "이미 등록" in captured.out
+
+
+def test_mcp_install_force_overwrites_existing(tmp_path, capsys):
+    settings_path = tmp_path / "cline_mcp_settings.json"
+    settings_path.write_text(
+        json.dumps({"mcpServers": {"cline-rag": {"command": "old", "args": []}}}),
+        encoding="utf-8",
+    )
+
+    exit_code = ask.main(["--mcp-install", "--mcp-settings", str(settings_path), "--force"])
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "등록했습니다" in captured.out
+
+    saved = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert saved["mcpServers"]["cline-rag"]["command"] != "old"

@@ -136,6 +136,44 @@ cd C:\path\to\cline-rag
 됩니다. **Cline 과 대화하는 중에 Cline 이 스스로 문서를 검색하게** 하려면
 MCP 서버로 등록하세요.
 
+### 가장 쉬운 방법: `ask.ps1` 이 자동으로 등록해줍니다
+
+JSON 파일을 직접 열어서 편집하지 않아도 됩니다.
+
+```powershell
+.\ask.ps1 --mcp-install
+```
+
+이 한 줄로 `.venv` 의 실제 경로가 채워진 `cline-rag` 항목이 Cline 설정
+파일(`~/.cline/data/settings/cline_mcp_settings.json`)에 자동으로 추가됩니다.
+이미 등록되어 있으면 실수로 덮어쓰지 않도록 오류를 내며, 갱신하려면
+`--mcp-install --force` 를 쓰세요.
+
+등록이 잘 됐는지 확인하려면:
+
+```powershell
+.\ask.ps1 --mcp-status
+```
+
+```
+'cline-rag' 등록됨: C:\Users\...\cline_mcp_settings.json
+  command : C:\...\cline-rag\.venv\Scripts\python.exe
+  args    : ['C:\\...\\cline-rag\\src\\rag_server.py']
+  disabled: False
+```
+
+`command` 경로가 잘못됐거나 `.venv` 가 없으면 경고 메시지와 함께 원인을
+알려줍니다. 그다음 VS Code 에서 Cline 확장을 열고 MCP 서버 목록에서
+`cline-rag` 가 초록불(연결됨)로 보이는지 확인하면 끝입니다.
+
+### 직접 JSON 을 편집하고 싶다면 (수동 방법)
+
+`--mcp-print` 로 등록할 JSON 조각만 뽑아볼 수도 있습니다:
+
+```powershell
+.\ask.ps1 --mcp-print
+```
+
 1. VS Code 에서 Cline 확장을 엽니다.
 2. Cline 설정에서 **MCP Servers** 항목을 찾아 설정 파일을 엽니다. 보통 경로는:
    ```
