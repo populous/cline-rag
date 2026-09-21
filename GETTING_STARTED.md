@@ -402,6 +402,67 @@ Remove-Item docs\example_vacation_policy.md
 
 ---
 
+## 7단계 — 다른 PC에서 다시 설치(이관)하기
+
+새 PC에서 이 프로젝트를 그대로 쓰려면, **저장소에 포함된 것**과 **포함되지 않은 것**을
+구분해야 합니다.
+
+### 저장소에 포함됨 (clone 시 자동으로 따라옴)
+
+- 소스(`src/`), 테스트(`tests/`), 문서(`docs/`), `config.json`, `requirements*.txt`
+- 루트의 `AGENTS.md` (OpenCode 규칙)
+
+### 저장소에 없음 (새 PC에서 다시 만들어야 함)
+
+| 항목 | git 상태 | 새 PC에서 |
+|---|---|---|
+| `.venv/` | gitignore | `setup.ps1` 이 생성 |
+| `rag_store_chroma/` (색인) | gitignore | `ingest.py --reset` 로 재색인 |
+| OpenCode MCP 설정 `~/.config/opencode/opencode.json` | 저장소 밖(머신 전용) | 아래 등록 절차 |
+
+### 최소 절차 (한 번에)
+
+```powershell
+git clone https://github.com/populous/cline-rag.git
+cd cline-rag
+
+# venv + 의존성 + 임베딩 모델 확인 + 색인 + 검증까지 자동
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
+```
+
+> `setup.ps1` 은 `config.json` 의 `embedding.provider` 를 보고
+> Ollama(`nomic-embed-text` pull) 또는 OpenAI(`OPENAI_API_KEY` 필요)를 검증합니다.
+
+### OpenCode MCP 등록 (선택, 머신 전용)
+
+새 PC에서 OpenCode 연동까지 쓰려면 **다시 등록**해야 합니다(경로가 머신마다 다름).
+수동으로 JSON을 편집할 필요 없이 자동 등록을 권장합니다:
+
+```powershell
+.\ask.ps1 --mcp-install --mcp-target opencode
+.\ask.ps1 --mcp-status --mcp-target opencode   # 확인
+```
+
+수동 등록하려면 `~/.config/opencode/opencode.json` 에 아래를 넣되,
+`C:\path\to\cline_rag` 를 실제 클론 경로로 바꾸세요:
+
+```json
+{
+  "mcp": {
+    "cline-rag": {
+      "type": "local",
+      "command": [
+        "C:\\path\\to\\cline_rag\\.venv\\Scripts\\python.exe",
+        "C:\\path\\to\\cline_rag\\src\\rag_server.py"
+      ],
+      "enabled": true
+    }
+  }
+}
+```
+
+> `config.json` 은 프로젝트 루트에 있고 git 추적 대상이라 **새로 만들 필요가 없습니다.**
+
 ## 자주 묻는 질문 (FAQ)
 
 **Q. 색인된 데이터는 어디에 저장되나요?**
