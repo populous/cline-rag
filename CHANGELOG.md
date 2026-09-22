@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `GETTING_STARTED.md` 7단계에 "새로 설치 시 필요한 의존성 한눈에 보기" 표를
   추가: 시스템에 미리 설치해야 하는 것(Python, Git, Ollama, OpenCode/Cline)과
   `requirements*.txt` 별 Python 패키지 목록(필수/선택 구분)을 한 곳에 정리.
+- `GETTING_STARTED.md` 4단계에 "OpenCode 창을 열어서 실제로 확인하기" 절
+  추가: `opencode` 명령으로 TUI를 열고, MCP 연결 상태를 확인하고, 자연어
+  질문만으로 OpenCode 가 `search_docs` 를 자동 호출해 문서 근거로 답하는지
+  검증하는 구체적인 절차를 기록. 실제로 OpenCode 창에서 MCP 연결과
+  질의응답이 정상 동작함을 확인한 뒤 반영함.
 
 ## [2.1.0] - 2026-09-21
 
