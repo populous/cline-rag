@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   먼저 한다"는 규칙이 MCP 프로토콜이 아니라 Host가 로드하는 규칙
   파일(`AGENTS.md`/`clinerules-template.md`)에서 오는 것이라는 점을
   명시. README.md/GETTING_STARTED.md 에서 링크로 연결.
+- `ARCHITECTURE.md`에 "MCP 호스트에 가져가야 할 파일들" 절 추가: 새
+  머신에서 OpenCode/Cline이 `cline-rag`를 MCP 서버로 쓰려면 저장소를
+  통째로 clone해야 하는 이유(`rag_server.py`가 `rag_core.py`에 의존하고
+  `PROJECT_DIR` 기준으로 `config.json`/`docs/`를 찾음)와, 반대로
+  `.venv/`·`rag_store_chroma/`·Host 등록 설정처럼 git에 없어서 머신마다
+  새로 만들어야 하는 3가지 항목을 표로 정리.
 
 ## [2.1.0] - 2026-09-21
 

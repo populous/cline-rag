@@ -94,6 +94,40 @@ Host의 LLM이 이 규칙을 읽고 "질문에 답하기 전 `search_docs`를 �
 - 검색 결과에 없는 내용은 추측하지 않는다("모르면 모른다"고 답한다).
 - `reindex` 실행은 반드시 사용자 승인을 먼저 받는다.
 
+## MCP 호스트에 가져가야 할 파일들
+
+새 PC(또는 다른 머신)에서 OpenCode/Cline 같은 Host 가 `cline-rag` 를 MCP
+서버로 쓰려면, 이 저장소를 통째로 clone 하는 것이 원칙이다. Host 는
+`rag_server.py` 하나만 실행하지만, 그 파일이 `rag_core.py` 에 의존하고
+(`rag_core.py` 가 `PROJECT_DIR`, 즉 `src/` 의 부모 디렉터리를 기준으로
+`config.json`/`docs/`/`rag_store_chroma/` 를 찾는다), 색인 없이는 검색
+결과도 없기 때문에 파일 몇 개만 떼어가는 것은 권장하지 않는다.
+
+### 저장소에서 통째로 가져와야 하는 것 (git clone)
+
+| 항목 | 왜 필요한가 |
+|---|---|
+| `src/rag_server.py` | Host 가 자식 프로세스로 실행하는 MCP 서버 본체 |
+| `src/rag_core.py` | `rag_server.py` 가 `import` 하는 검색 엔진(필수 의존) |
+| `src/ingest.py` | `reindex` 도구가 내부적으로 자식 프로세스로 호출 |
+| `config.json` | 임베딩 제공자·저장소 경로·청킹 설정(없어도 기본값으로 동작은 하지만, 커스텀했다면 필요) |
+| `docs/` | 색인 대상 원본 문서 — 이게 있어야 검색할 내용이 생긴다 |
+| `AGENTS.md` (OpenCode) / `clinerules-template.md` (Cline) | Host 가 "언제 `search_docs` 를 호출할지" 판단하는 행동 규칙 |
+| `requirements.txt` | `rag_server.py` 실행에 필요한 Python 패키지 목록 |
+
+### 새 머신에서 별도로 다시 만들어야 하는 것 (git에 없음)
+
+| 항목 | 이유 | 만드는 방법 |
+|---|---|---|
+| `.venv/` | `.gitignore` 대상, 머신마다 파이썬 경로가 다름 | `setup.ps1` 이 생성 |
+| `rag_store_chroma/` (색인된 벡터 저장소) | `.gitignore` 대상, 임베딩 결과물이라 용량이 크고 재생성 가능 | `python src\ingest.py --reset` |
+| Host 쪽 MCP 등록 설정(`opencode.json`/`cline_mcp_settings.json`) | 머신 전용 절대경로(`.venv` 위치)가 들어가므로 저장소에 커밋 안 함 | `.\ask.ps1 --mcp-install [--mcp-target opencode]` |
+
+> 즉 "가져가는 것"은 **저장소 전체**이고, "새로 만드는 것"은 **머신에 종속된
+> 3가지**(가상환경, 색인 결과물, Host 등록 설정)뿐이다. 이 절차는
+> **[GETTING_STARTED.md](GETTING_STARTED.md) 7단계 "다른 PC에서 다시
+> 설치(이관)하기"** 에 실행 명령까지 그대로 정리되어 있다.
+
 ## 등록(연결) 방법 요약
 
 Host마다 MCP 서버 등록 방식(설정 파일 스키마)이 다르다. `src/ask.py`의
