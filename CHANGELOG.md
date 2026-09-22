@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `PROJECT_DIR` 기준으로 `config.json`/`docs/`를 찾음)와, 반대로
   `.venv/`·`rag_store_chroma/`·Host 등록 설정처럼 git에 없어서 머신마다
   새로 만들어야 하는 3가지 항목을 표로 정리.
+- `ARCHITECTURE.md` 흐름도 보강: Ollama 엔진이 "색인(문서→벡터 저장)과
+  검색(질의→벡터 비교) 모두에 개입"하는 핵심 엔진임을 명시하고, 색인
+  단계 다이어그램을 추가. vector/keyword/hybrid 모드별 Ollama 개입
+  여부와 BM25(keyword)는 검색 시 Ollama 없이 텍스트 빈도로만 계산된다는
+  점을 표로 정리.
 
 ## [2.1.0] - 2026-09-21
 
