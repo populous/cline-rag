@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `GETTING_STARTED.md` 7단계에 "새로 설치 시 필요한 의존성 한눈에 보기" 표를
+  추가: 시스템에 미리 설치해야 하는 것(Python, Git, Ollama, OpenCode/Cline)과
+  `requirements*.txt` 별 Python 패키지 목록(필수/선택 구분)을 한 곳에 정리.
+
 ## [2.1.0] - 2026-09-21
 
 ### Added

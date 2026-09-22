@@ -407,9 +407,47 @@ Remove-Item docs\example_vacation_policy.md
 새 PC에서 이 프로젝트를 그대로 쓰려면, **저장소에 포함된 것**과 **포함되지 않은 것**을
 구분해야 합니다.
 
+### 새로 설치 시 필요한 의존성 한눈에 보기
+
+**시스템에 미리 설치해야 하는 것** (git clone 만으로는 해결 안 됨):
+
+| 항목 | 확인 명령 | 비고 |
+|---|---|---|
+| Windows + PowerShell | — | 이 가이드 기준 |
+| Python 3.10 이상 | `python --version` | |
+| Git | `git --version` | 저장소 clone 용 |
+| [Ollama](https://ollama.com/download) | `ollama --version` | 로컬 임베딩 계산용 |
+| [OpenCode](https://opencode.ai) 또는 Cline (선택) | — | MCP 클라이언트 |
+
+**Python 패키지 의존성** (전부 `requirements*.txt` 로 관리, `setup.ps1` 이 자동 설치):
+
+| 파일 | 필수 여부 | 내용 |
+|---|---|---|
+| `requirements.txt` | **필수(런타임)** | `langchain-core`, `langchain-text-splitters`, `langchain-chroma`, `chromadb`, `langchain-ollama`, `langchain-openai`, `langchain-community`, `rank_bm25`, `langgraph` |
+| `requirements-dev.txt` | 선택(테스트 시에만) | `pytest` |
+| `requirements-optional.txt` | 선택(PDF 색인 시에만) | `pypdf` |
+
+> `numpy`는 `chromadb`가 의존성으로 자동 설치하므로 따로 넣지 않습니다.
+> `chromadb`는 용량/설치 시간이 좀 있는 편입니다(Rust 확장 포함).
+
+직접 설치하는 경우의 전체 명령:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt        # 필수 런타임 의존성
+python -m pip install -r requirements-dev.txt    # 테스트용(선택)
+ollama pull nomic-embed-text                     # 임베딩 모델(최초 1회)
+```
+
+이 전체 과정(가상환경 생성 → 의존성 설치 → 임베딩 모델 확인 → 색인 → 검증)은
+아래처럼 `setup.ps1` 한 줄로 대신할 수 있습니다.
+
 ### 저장소에 포함됨 (clone 시 자동으로 따라옴)
 
 - 소스(`src/`), 테스트(`tests/`), 문서(`docs/`), `config.json`, `requirements*.txt`
+  (의존성 **목록**만 포함되고, 실제 패키지 설치는 별도로 해야 합니다 — 위 표 참고)
 - 루트의 `AGENTS.md` (OpenCode 규칙)
 
 ### 저장소에 없음 (새 PC에서 다시 만들어야 함)
