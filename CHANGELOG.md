@@ -35,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   단계 다이어그램을 추가. vector/keyword/hybrid 모드별 Ollama 개입
   여부와 BM25(keyword)는 검색 시 Ollama 없이 텍스트 빈도로만 계산된다는
   점을 표로 정리.
+- `ARCHITECTURE.md`에 "로컬 엔진별 색인/검색 능력 차이" 절 추가: 4개
+  로컬 엔진(Ollama, Chroma, BM25/rank_bm25, LangGraph) 각각의 색인/검색
+  관여 여부를 표와 관여 지도로 정리. Ollama+Chroma 만 색인에 관여하고,
+  BM25는 검색 시점 즉석 계산(자체 저장소 없음), LangGraph는 오케스트레이션
+  전담임을 명시.
 
 ## [2.1.0] - 2026-09-21
 
