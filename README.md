@@ -17,6 +17,9 @@
 **처음 사용하시나요?** **[GETTING_STARTED.md](GETTING_STARTED.md)** 에서
 설치부터 OpenCode 등록까지 순서대로 따라 하세요.
 
+**MCP 관점에서 이 프로젝트가 정확히 무엇인지(Host/Server 관계)** 는
+**[ARCHITECTURE.md](ARCHITECTURE.md)** 에 정리되어 있습니다.
+
 전체 구축 과정은 **[RAG_STEP_BY_STEP.md](RAG_STEP_BY_STEP.md)**  보세요.
 변경 이력은 **[CHANGELOG.md](CHANGELOG.md)** 에 있습니다.
 
@@ -48,7 +51,8 @@ cline_rag/
 ├── requirements-dev.txt       # 테스트 의존성 (pytest)
 ├── requirements-optional.txt  # 선택 확장 (pypdf)
 ├── requirements.lock.txt      # pip freeze 기록
-└── GETTING_STARTED.md         # 처음 사용자용 매뉴얼
+├── GETTING_STARTED.md         # 처음 사용자용 매뉴얼
+└── ARCHITECTURE.md            # MCP 관점 구조(Host/Server 관계) 정리
 ```
 
 ## 빠른 시작

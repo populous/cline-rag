@@ -4,6 +4,8 @@
 가장 빠른 경로입니다. "왜 이렇게 하는지"보다 "무엇을, 어떤 순서로" 하는지에
 집중합니다. 배경 지식이나 전체 아키텍처가 궁금하면 **[RAG_STEP_BY_STEP.md](RAG_STEP_BY_STEP.md)**
 를 참고하세요. 명령어 요약은 **[README.md](README.md)** 에 있습니다.
+MCP 관점에서 OpenCode/Cline(Host)과 이 서버의 관계가 궁금하면
+**[ARCHITECTURE.md](ARCHITECTURE.md)** 를 보세요.
 
 ---
 

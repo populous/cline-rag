@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   질문만으로 OpenCode 가 `search_docs` 를 자동 호출해 문서 근거로 답하는지
   검증하는 구체적인 절차를 기록. 실제로 OpenCode 창에서 MCP 연결과
   질의응답이 정상 동작함을 확인한 뒤 반영함.
+- `ARCHITECTURE.md` 신규 추가: MCP(Model Context Protocol) 관점에서
+  `cline-rag`(=MCP Server, `src/rag_server.py`)와 OpenCode/Cline(=MCP
+  Host)의 관계를 정리. Host/Client/Server 3단 역할 분담, RAG의 검색(R)과
+  생성(A+G)이 어느 쪽 책임인지, 도구별 autoApprove 가능 여부, "검색을
+  먼저 한다"는 규칙이 MCP 프로토콜이 아니라 Host가 로드하는 규칙
+  파일(`AGENTS.md`/`clinerules-template.md`)에서 오는 것이라는 점을
+  명시. README.md/GETTING_STARTED.md 에서 링크로 연결.
 
 ## [2.1.0] - 2026-09-21
 
