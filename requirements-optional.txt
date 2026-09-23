@@ -20,3 +20,11 @@ pypdf>=5.0
 # provider="llama_cpp_server" 는 기존 langchain-openai 를 재사용하므로
 # 추가 의존성이 없습니다. 상세는 docs/llama_cpp_provider.md 참고.
 llama-cpp-python>=0.3.0
+
+# ---------------------------------------------------------------------------
+# 교차 인코더 리랭커 (src/advanced_rag_graph.py 의 rerank 노드)
+# ---------------------------------------------------------------------------
+# 검색 결과를 질문과의 관련도로 재정렬할 때만 필요합니다. 없으면 리랭킹
+# 없이 원래 순위로 통과합니다(폴백). 기본 모델은
+# cross-encoder/ms-marco-MiniLM-L-6-v2 이며 RERANKER_MODEL 환경변수로 변경.
+sentence-transformers>=3.0
