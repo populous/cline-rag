@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-09-23
+
+### Added
+
+- Advanced RAG orchestration graph (LangGraph StateGraph): hybrid_retrieve -> rerank -> emit_metrics
+- Cross-encoder reranking node (sentence-transformers, RERANKER_MODEL env var)
+- LangSmith tracing/performance metrics schema (RetrievalMetrics, RerankMetrics)
+- tests/test_advanced_rag_graph.py (5 unit tests)
+
 ## [2.3.0] - 2026-09-23
 
 ### Added
@@ -305,7 +314,8 @@ First public release of the Cline RAG MCP server.
 - Verified on Python 3.14.7 with CMake/CTest 4.4.3 on Windows
 - CI runs on windows-latest with Python 3.12 (pytest + smoke + CTest)
 
-[Unreleased]: https://github.com/populous/cline-rag/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/populous/cline-rag/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/populous/cline-rag/releases/tag/v2.4.0
 [2.3.0]: https://github.com/populous/cline-rag/releases/tag/v2.3.0
 [2.2.0]: https://github.com/populous/cline-rag/releases/tag/v2.2.0
 [2.1.0]: https://github.com/populous/cline-rag/releases/tag/v2.1.0
