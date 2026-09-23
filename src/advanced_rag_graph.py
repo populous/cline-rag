@@ -5,6 +5,15 @@ cline-rag upgrade: graph(control) layer first.
 Reuses the existing hybrid(BM25+vector) search from rag_core.search_documents()
 as-is, and adds on top of it: (1) a reranking node, (2) LangGraph StateGraph
 orchestration, (3) a LangSmith tracing/performance metrics schema.
+
+이 모듈은 rag_core.search_documents() 를 첫 노드(hybrid_retrieve)로 감싸는
+"상위 레이어"다. rag_core.build_search_graph() 는 vector/keyword/hybrid 를
+분기하는 "검색 방식 선택" 그래프이고, 이 모듈은 그 검색 결과를 받아
+(리랭킹 + 메트릭)을 덧붙이는 "후처리" 그래프다. 둘은 대체가 아니라 계층 관계다.
+
+Reranker(교차 인코더)는 기본으로 cross-encoder/ms-marco-MiniLM-L-6-v2 를 쓰고,
+환경변수 RERANKER_MODEL 로 다른 모델로 바꿀 수 있다. sentence-transformers 가
+설치되어 있지 않으면 리랭킹 없이 원래 순위 그대로 통과시킨다(폴백).
 """
 
 from __future__ import annotations
@@ -109,7 +118,7 @@ def rerank(state: AdvancedRagState) -> AdvancedRagState:
         )
         model = CrossEncoder(model_name)
 
-        pairs = [(state["query"], h.get("content", "")) for h in hits]
+        pairs = [(state["query"], h.get("text", "")) for h in hits]
         rerank_scores = model.predict(pairs) if pairs else []
 
         scored = list(zip(hits, rerank_scores))
