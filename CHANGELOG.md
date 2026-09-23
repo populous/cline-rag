@@ -7,8 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-09-23
+
 ### Added
 
+- llama.cpp embedding providers: `llama_cpp` (in-process, loads a GGUF model
+  via `llama-cpp-python`) and `llama_cpp_server` (calls the OpenAI-compatible
+  `/v1/embeddings` endpoint exposed by `llama-server`, reusing
+  `langchain-openai` with no new dependency). `rag_core.build_embeddings()`
+  delegates both to `src/embeddings_llama_cpp.py`; defaults live in
+  `DEFAULT_CONFIG["embedding"]`. `llama-cpp-python` added to
+  `requirements-optional.txt` (only for the in-process provider), with
+  `tests/test_embeddings_llama_cpp.py` (6 cases, no external services) and
+  `docs/llama_cpp_provider.md`.
 - `GETTING_STARTED.md` 7단계에 "새로 설치 시 필요한 의존성 한눈에 보기" 표를
   추가: 시스템에 미리 설치해야 하는 것(Python, Git, Ollama, OpenCode/Cline)과
   `requirements*.txt` 별 Python 패키지 목록(필수/선택 구분)을 한 곳에 정리.
@@ -271,7 +282,8 @@ First public release of the Cline RAG MCP server.
 - Verified on Python 3.14.7 with CMake/CTest 4.4.3 on Windows
 - CI runs on windows-latest with Python 3.12 (pytest + smoke + CTest)
 
-[Unreleased]: https://github.com/populous/cline-rag/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/populous/cline-rag/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/populous/cline-rag/releases/tag/v2.2.0
 [2.1.0]: https://github.com/populous/cline-rag/releases/tag/v2.1.0
 [2.0.0]: https://github.com/populous/cline-rag/releases/tag/v2.0.0
 [1.1.0]: https://github.com/populous/cline-rag/releases/tag/v1.1.0
