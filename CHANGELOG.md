@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-09-23
+
+### Added
+
+- `examples/` learning labs: a self-contained, main-job-safe set of
+  step-by-step tutorials covering the technologies behind `cline-rag`:
+  - `01_llama_cpp` — GGUF loading, in-process/server embeddings, text generation
+  - `02_langchain` — prompt templates, output parsers, LCEL, retrievers,
+    llama.cpp as an LLM backend
+  - `03_langgraph` — StateGraph, conditional routing, tool-calling loop,
+    a retrieve+generate RAG graph
+  - `04_langsmith` — tracing, LangGraph run tracing, eval datasets
+  - `05_upgrade_path` — a roadmap and `benchmark_embeddings.py` for promoting
+    llama.cpp to the main embedding engine
+- `examples/requirements-examples.txt` keeps example-only dependencies
+  (`llama-cpp-python`, `langsmith`, `python-dotenv`) separate from the main
+  app requirements.
+
+### Security
+
+- `.env` added to `.gitignore` so the LangSmith API key is never committed;
+  `examples/.env.example` is a committed, keyless template.
+
 ## [2.2.0] - 2026-09-23
 
 ### Added
@@ -282,7 +305,8 @@ First public release of the Cline RAG MCP server.
 - Verified on Python 3.14.7 with CMake/CTest 4.4.3 on Windows
 - CI runs on windows-latest with Python 3.12 (pytest + smoke + CTest)
 
-[Unreleased]: https://github.com/populous/cline-rag/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/populous/cline-rag/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/populous/cline-rag/releases/tag/v2.3.0
 [2.2.0]: https://github.com/populous/cline-rag/releases/tag/v2.2.0
 [2.1.0]: https://github.com/populous/cline-rag/releases/tag/v2.1.0
 [2.0.0]: https://github.com/populous/cline-rag/releases/tag/v2.0.0
