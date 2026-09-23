@@ -143,6 +143,12 @@ Ollama ──(벡터)──► Chroma  ◄──(질의 벡터)── Ollama
 관여하고, BM25 는 "검색(키워드 매칭)만", LangGraph 는 "검색 결과를 어떤
 방식으로 조합할지(오케스트레이션)만" 담당한다.
 
+> 참고: `llama.cpp` 계열(`llama_cpp`, `llama_cpp_server`)은 위 표의
+> **Ollama 와 동일한 "임베딩 엔진" 역할**을 하는 선택적 대체 provider 다
+> (색인·검색 모두 관여). Ollama 없이 순수 llama.cpp 런타임을 쓰고 싶을 때
+> 사용한다. 상세는 **[docs/llama_cpp_provider.md](docs/llama_cpp_provider.md)**
+> 참고.
+
 ## 제공하는 4개 도구 (MCP의 "기능 노출 단위")
 
 | 도구 | 성격 | 자동 승인(autoApprove) | 정의 위치 |

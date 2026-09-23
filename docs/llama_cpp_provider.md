@@ -3,8 +3,9 @@
 이 문서는 `src/embeddings_llama_cpp.py`에 추가된 두 provider(`llama_cpp`, `llama_cpp_server`)를
 기존 `src/rag_core.py`의 `build_embeddings()`에 연결하는 방법을 설명한다.
 
-이번 PR은 기존 `rag_core.py`, `config.json`, `requirements-optional.txt`를 직접 수정하지 않는다.
-리뷰어가 아래 diff 제안을 검토한 뒤 별도 커밋으로 반영하는 것을 권장한다.
+통합은 이미 반영되어 있다: `rag_core.py`의 `DEFAULT_CONFIG["embedding"]`에 두 provider
+기본값이 포함되고, `build_embeddings()`가 llama.cpp 계열 provider를 `embeddings_llama_cpp`
+모듈로 위임한다. 아래는 그 구현 요약이다.
 
 ## 1. 배경
 
@@ -16,42 +17,21 @@
 | `llama_cpp` | 인프로세스, GGUF 직접 로드 | `llama-cpp-python` (신규) | 서버 불필요, 프로세스당 모델 1개 고정 |
 | `llama_cpp_server` | `llama-server`의 OpenAI 호환 `/v1/embeddings` 호출 | 없음 (기존 `langchain-openai` 재사용) | Ollama처럼 서버-클라이언트 분리, 여러 프로세스가 서버 공유 가능 |
 
-## 2. rag_core.py 통합 (제안 diff)
+## 2. rag_core.py 통합 (완료)
 
-`src/rag_core.py`의 `build_embeddings()` 함수에서 기존 `openai` 분기 뒤에 다음을 추가:
+`src/rag_core.py`의 `build_embeddings()` 함수에서 기존 `openai` 분기 뒤에 다음이 추가되어 있다:
 
 ```python
-    if provider == "openai":
-        ...
-        return OpenAIEmbeddings(
-            model=conf["model"], api_key=api_key, base_url=conf["apiBase"]
-        )
+    if provider in ("llama_cpp", "llama_cpp_server"):
+        from embeddings_llama_cpp import build_llama_cpp_embeddings
 
-    # --- 신규: llama.cpp 계열 provider는 별도 모듈에 위임 ---
-    from embeddings_llama_cpp import supports as _llama_cpp_supports
-    from embeddings_llama_cpp import build_llama_cpp_embeddings
-
-    if _llama_cpp_supports(provider):
         return build_llama_cpp_embeddings(cfg)
-
     raise ValueError(f"알 수 없는 임베딩 제공자: {provider}")
 ```
 
-`load_config()`의 `DEFAULT_CONFIG["embedding"]`에는 다음을 병합:
-
-```python
-from embeddings_llama_cpp import LLAMA_CPP_DEFAULT_CONFIG
-
-DEFAULT_CONFIG = {
-    "embedding": {
-        "provider": "ollama",
-        "ollama": {...},
-        "openai": {...},
-        **LLAMA_CPP_DEFAULT_CONFIG,  # llama_cpp, llama_cpp_server 기본값 추가
-    },
-    ...
-}
-```
+`DEFAULT_CONFIG["embedding"]`에는 `llama_cpp`(`modelPath`, `nCtx`, `nGpuLayers`,
+`nThreads`)와 `llama_cpp_server`(`apiBase`, `apiKey`, `model`) 기본값이 인라인으로
+포함되어 있다. `config.json`은 이 기본값을 재정의할 때만 수정하면 된다.
 
 ## 3. config.json 예시
 
@@ -94,17 +74,17 @@ llama-server 기동 예시:
 
 ## 4. 의존성
 
-`requirements-optional.txt`에 다음 추가 (제안):
+`requirements-optional.txt`에 다음이 추가되어 있다:
 
 ```
-llama-cpp-python   # provider="llama_cpp" 사용 시에만 필요
+llama-cpp-python>=0.3.0   # provider="llama_cpp" 사용 시에만 필요
 ```
 
 `llama_cpp_server`는 기존 `langchain-openai`를 재사용하므로 추가 의존성이 없다.
 
-## 5. 미결 사항 (리뷰 시 확인 필요)
+## 5. 반영/잔여 사항
 
-- [ ] `llama-cpp-python`을 `requirements.txt`(필수) 또는 `requirements-optional.txt`(선택) 중 어디에 둘지 결정
-- [ ] GPU 오프로드(`nGpuLayers`) 기본값을 0(CPU)으로 유지할지, 환경 자동 감지로 바꿀지 결정
-- [ ] `tests/test_rag_core.py`에 두 provider용 단위 테스트 추가 (기존 `test_load_config_defaults_when_file_missing` 패턴 참고)
-- [ ] `ARCHITECTURE.md`의 "로컬 엔진별 색인/검색 능력 차이" 절에 llama.cpp 계열 항목 추가 여부 결정
+- [x] `llama-cpp-python`을 `requirements-optional.txt`(선택)에 추가
+- [x] `tests/test_embeddings_llama_cpp.py`에 단위 테스트 추가 (실패 경로/객체 생성, 외부 서비스 불필요)
+- [x] `ARCHITECTURE.md`의 "로컬 엔진별 색인/검색 능력 차이" 절에 llama.cpp 계열 언급 추가
+- [ ] GPU 오프로드(`nGpuLayers`) 기본값 0(CPU) 유지 여부 — 실제 GPU 환경에서 재검토

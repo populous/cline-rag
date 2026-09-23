@@ -107,6 +107,9 @@ def build_llama_cpp_embeddings(cfg: dict) -> Embeddings:
         )
         # 로컬 서버는 보통 API 키 검증을 하지 않으므로 더미 값을 허용한다.
         api_key = conf.get("apiKey", "not-needed")
+        # llama-server 의 /v1/models 는 임베딩 컨텍스트 길이(토큰 한도)를 정확히
+        # 보고하지 않는다. OpenAIEmbeddings 의 사전 검사를 켜두면 유효한 입력도
+        # 조용히 거부되거나 불필요한 추가 요청이 생길 수 있어 끈다.
         return OpenAIEmbeddings(
             model=conf.get("model", "local-embedding"),
             api_key=api_key,
