@@ -12,3 +12,11 @@
 # ---------------------------------------------------------------------------
 # docs/ 에 PDF 를 넣고 싶을 때 필요합니다. LangChain의 PyPDFLoader가 사용합니다.
 pypdf>=5.0
+
+# ---------------------------------------------------------------------------
+# llama.cpp 임베딩 provider (config.json 의 embedding.provider 를 바꿔 사용)
+# ---------------------------------------------------------------------------
+# provider="llama_cpp" (인프로세스, GGUF 직접 로드) 를 쓸 때만 필요합니다.
+# provider="llama_cpp_server" 는 기존 langchain-openai 를 재사용하므로
+# 추가 의존성이 없습니다. 상세는 docs/llama_cpp_provider.md 참고.
+llama-cpp-python>=0.3.0

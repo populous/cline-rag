@@ -32,7 +32,7 @@ from langgraph.graph import END, START, StateGraph
 
 DEFAULT_CONFIG = {
     "embedding": {
-        "provider": "ollama",  # "ollama" 또는 "openai"
+        "provider": "ollama",  # "ollama" / "openai" / "llama_cpp" / "llama_cpp_server"
         "ollama": {
             "apiBase": "http://127.0.0.1:11434",
             "model": "nomic-embed-text",
@@ -41,6 +41,19 @@ DEFAULT_CONFIG = {
             "model": "text-embedding-3-small",
             "apiKeyEnv": "OPENAI_API_KEY",
             "apiBase": "https://api.openai.com/v1",
+        },
+        # llama.cpp 계열 (Ollama 없이 순수 llama.cpp 런타임으로 임베딩).
+        # 팩토리/상세는 src/embeddings_llama_cpp.py 와 docs/llama_cpp_provider.md 참고.
+        "llama_cpp": {
+            "modelPath": "",
+            "nCtx": 2048,
+            "nGpuLayers": 0,
+            "nThreads": None,
+        },
+        "llama_cpp_server": {
+            "apiBase": "http://127.0.0.1:8080/v1",
+            "apiKey": "not-needed",
+            "model": "local-embedding",
         },
     },
     "store": {
@@ -126,6 +139,10 @@ def build_embeddings(cfg: dict) -> Embeddings:
         return OpenAIEmbeddings(
             model=conf["model"], api_key=api_key, base_url=conf["apiBase"]
         )
+    if provider in ("llama_cpp", "llama_cpp_server"):
+        from embeddings_llama_cpp import build_llama_cpp_embeddings
+
+        return build_llama_cpp_embeddings(cfg)
     raise ValueError(f"알 수 없는 임베딩 제공자: {provider}")
 
 
