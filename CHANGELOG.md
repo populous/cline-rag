@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-09-24
+
+### Added
+
+- `examples/06_ollama_gpu/` — Ollama GPU(PTX/CUDA) 임베딩 검증 도구:
+  `check_ollama_gpu.py`(읽기 전용 PASS/FAIL 진단, PTX 오류 감지,
+  `--require-gpu` 플래그, nvidia-smi + `/api/ps` 로 GPU/CPU 러너 판별)와
+  드라이버 업데이트 후 확인 절차를 담은 README 추가
+
 ## [2.4.0] - 2026-09-23
 
 ### Added
@@ -314,7 +323,8 @@ First public release of the Cline RAG MCP server.
 - Verified on Python 3.14.7 with CMake/CTest 4.4.3 on Windows
 - CI runs on windows-latest with Python 3.12 (pytest + smoke + CTest)
 
-[Unreleased]: https://github.com/populous/cline-rag/compare/v2.4.0...HEAD
+[Unreleased]: https://github.com/populous/cline-rag/compare/v2.4.1...HEAD
+[2.4.1]: https://github.com/populous/cline-rag/releases/tag/v2.4.1
 [2.4.0]: https://github.com/populous/cline-rag/releases/tag/v2.4.0
 [2.3.0]: https://github.com/populous/cline-rag/releases/tag/v2.3.0
 [2.2.0]: https://github.com/populous/cline-rag/releases/tag/v2.2.0
