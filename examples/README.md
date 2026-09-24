@@ -17,6 +17,7 @@
 | 3 | [`03_langgraph/`](03_langgraph/) | LangGraph: StateGraph/조건부 엣지/도구 호출/검색+생성 그래프 | 메인 앱의 검색 오케스트레이션(hybrid 분기) |
 | 4 | [`04_langsmith/`](04_langsmith/) | LangSmith: 트레이싱/실행 추적/평가 데이터셋 | 실행 관측성(observability) 담당 |
 | 5 | [`05_upgrade_path/`](05_upgrade_path/) | llama.cpp를 메인 엔진으로 승격하는 로드맵 | **향후 개발 방향** |
+| 6 | [`06_ollama_gpu/`](06_ollama_gpu/) | Ollama GPU(PTX/CUDA) 임베딩 검증·PASS/FAIL 진단 | 운영 검증 도구(드라이버 업데이트 확인용) |
 
 ## 시작하기
 
